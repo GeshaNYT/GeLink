@@ -4988,7 +4988,7 @@
                                 composerRow.style.display = isContact ? 'contents' : 'none';
                                 inviteBar.classList.toggle('ge-hidden', isContact);
                                 if (!isContact) {
-                                    const alreadySent = (JSON.parse(localStorage.getItem('ge_sent_invites') || '[]')).includes(targetEmail);
+                                    const alreadySent = await geEngine.chat._isInviteStillPending(targetEmail);
                                     inviteBar.innerText = alreadySent ? 'Заявка отправлена — ждём ответа' : 'Отправить приглашение в контакты';
                                     inviteBar.disabled = alreadySent;
                                     inviteBar.style.opacity = alreadySent ? '0.6' : '1';
@@ -5232,6 +5232,27 @@
                         avatarEl.innerHTML = deletedAccountIconSvg(24);
                     }
                 },
+                // Локальная метка "приглашение уже отправлено" (localStorage) могла
+                // протухнуть — например, заявку давно приняли/отклонили, или контакт
+                // удалили и добавили заново. Раньше клиент слепо доверял этой метке
+                // вечно; теперь, если она стоит, дополнительно сверяемся с сервером —
+                // и если заявки там уже нет, снимаем метку, чтобы снова можно было
+                // отправить приглашение, а не видеть неактивную "уже отправлено" зря.
+                async _isInviteStillPending(targetEmail) {
+                    const sent = JSON.parse(localStorage.getItem('ge_sent_invites') || '[]');
+                    if (!sent.includes(targetEmail)) return false;
+                    try {
+                        const res = await fetch(`/api/index?action=checkPendingInvite&user_email=${encodeURIComponent(geEngine.state.session.email)}&target_email=${encodeURIComponent(targetEmail)}`);
+                        const data = await res.json();
+                        if (data.status === 'ok' && !data.pending) {
+                            localStorage.setItem('ge_sent_invites', JSON.stringify(sent.filter(e => e !== targetEmail)));
+                            return false;
+                        }
+                        return true;
+                    } catch {
+                        return true; // сеть недоступна — не рискуем, оставляем как было
+                    }
+                },
                 _openChatTargetEmail: null,
                 async open(id, prettyName, knownEmpty, explicitTargetEmail) {
                     geEngine.media.clearPendingAttachment(); // не тащим незаконченное вложение в другой чат
@@ -5281,12 +5302,12 @@
                         const inviteBar = document.getElementById('ge-invite-bar');
                         const nameEl = document.getElementById('ge-active-name');
 
-                        const applyNormalComposerState = () => {
+                        const applyNormalComposerState = async () => {
                             if (!composerRow || !inviteBar) return;
                             composerRow.style.display = isContact ? 'contents' : 'none';
                             inviteBar.classList.toggle('ge-hidden', isContact);
                             if (!isContact) {
-                                const alreadySent = (JSON.parse(localStorage.getItem('ge_sent_invites') || '[]')).includes(targetEmail);
+                                const alreadySent = await geEngine.chat._isInviteStillPending(targetEmail);
                                 inviteBar.innerText = alreadySent ? 'Заявка отправлена — ждём ответа' : 'Отправить приглашение в контакты';
                                 inviteBar.disabled = alreadySent;
                                 inviteBar.style.opacity = alreadySent ? '0.6' : '1';
@@ -5303,7 +5324,7 @@
                         if (targetEmail && geEngine.state.deletedAccountsCache[targetEmail]) {
                             geEngine.chat._applyDeletedAccountUI(composerRow, inviteBar, nameEl, activeAv, prettyName || id);
                         } else {
-                            applyNormalComposerState();
+                            await applyNormalComposerState();
                         }
 
                         if (targetEmail) {
@@ -5325,7 +5346,7 @@
                                     // и раньше это "восстановление" просто записывало то же самое
                                     // устаревшее значение обратно.
                                     delete geEngine.state.deletedAccountsCache[targetEmail];
-                                    applyNormalComposerState();
+                                    await applyNormalComposerState();
                                     const freshName = data.profile.name ? safeDecodeURIComponent(data.profile.name) : (prettyName || id);
                                     if (nameEl) nameEl.innerText = freshName;
                                     activeAv.classList.remove('ge-av-deleted', 'ge-status-online', 'ge-status-offline');
