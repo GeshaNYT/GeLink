@@ -733,6 +733,19 @@ export default async function handler(request, response) {
             return response.status(200).json({ status: 'ok' });
         }
 
+        // Проверка: висит ли ещё МОЯ заявка на добавление target_email в контакты.
+        // Нужна клиенту, чтобы не доверять вечно локальной метке "приглашение уже
+        // отправлено" (localStorage) — та могла протухнуть (заявку уже приняли/
+        // отклонили/контакт удалили заново), а сервер знает актуальное состояние.
+        if (action === 'checkPendingInvite' && target_email) {
+            const jwtEmail   = await tryAuth(request, env.jwt);
+            const emailLower = (jwtEmail ?? user_email ?? '').trim().toLowerCase();
+            if (!emailLower) return response.status(400).json({ status: 'error', message: 'Не указан email' });
+
+            const pending = await db('HGET', `contact_requests:${target_email}`, emailLower);
+            return response.status(200).json({ status: 'ok', pending: !!pending });
+        }
+
         if (action === 'removeContact' && target_email) {
             const jwtEmail   = await tryAuth(request, env.jwt);
             const emailLower = (jwtEmail ?? user_email ?? '').trim().toLowerCase();
