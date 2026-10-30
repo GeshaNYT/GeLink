@@ -263,6 +263,60 @@ async function pushSystemMessage(db, roomId, text, email, env) {
     };
     await db('LPUSH', `room:${roomId}`, await encryptForStorage(JSON.stringify(msg), env));
 }
+// ── OAuth 2.0: «Войти через GeLink» для сторонних сайтов ─────
+// Зарегистрированные клиенты берутся из переменной окружения OAUTH_CLIENTS (JSON):
+// {"minva": {"name": "Minva Messenger", "secret": "...", "redirect_uris": ["https://.../callback"]}}
+const OAUTH_CODE_TTL  = 60;    // секунд живёт одноразовый code
+const OAUTH_TOKEN_TTL = 3600;  // секунд живёт access_token
+const OAUTH_SCOPES    = ['profile', 'email'];
+
+function getOAuthClient(clientId) {
+    if (!clientId) return null;
+    let clients;
+    try { clients = JSON.parse(process.env.OAUTH_CLIENTS || '{}'); } catch { return null; }
+    const c = clients[clientId];
+    if (!c || !c.secret || !Array.isArray(c.redirect_uris)) return null;
+    return c;
+}
+
+function randomHex(n = 32) {
+    return Array.from(crypto.getRandomValues(new Uint8Array(n)))
+        .map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// Сравнение строк за постоянное время (чтобы секрет нельзя было подобрать по таймингу)
+function safeEqual(a, b) {
+    a = String(a ?? ''); b = String(b ?? '');
+    let diff = a.length ^ b.length;
+    for (let i = 0; i < Math.max(a.length, b.length); i++)
+        diff |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
+    return diff === 0;
+}
+
+async function pkceS256(verifier) {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
+    return bytesToBase64(new Uint8Array(buf)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function normalizeScope(scope) {
+    const list = String(scope || 'profile').split(/[\s+]+/).filter(s => OAUTH_SCOPES.includes(s));
+    if (!list.includes('profile')) list.unshift('profile');
+    return [...new Set(list)].join(' ');
+}
+
+function readBody(request) {
+    const b = request.body;
+    if (!b) return {};
+    if (typeof b === 'string') {
+        try { return JSON.parse(b); } catch { return Object.fromEntries(new URLSearchParams(b)); }
+    }
+    return b;
+}
+
+function getHeader(request, name) {
+    return request.headers.get?.(name) ?? request.headers[name] ?? '';
+}
+
 export default async function handler(request, response) {
     const env = {
         url:       process.env.UPSTASH_URL,
@@ -279,6 +333,118 @@ export default async function handler(request, response) {
     const { room = 'general', user_email, action, target_email } = request.query ?? {};
 
     try {
+
+        // ══════════════════════════════════════════════════════
+        //  OAuth 2.0 — «Войти через GeLink»
+        // ══════════════════════════════════════════════════════
+
+        // Информация о клиенте для страницы подтверждения (публично, без секрета)
+        if (action === 'oauthClientInfo') {
+            const { client_id, redirect_uri } = request.query;
+            const client = getOAuthClient(client_id);
+            if (!client)
+                return response.status(400).json({ status: 'error', message: 'Неизвестное приложение' });
+            if (!client.redirect_uris.includes(redirect_uri))
+                return response.status(400).json({ status: 'error', message: 'Недопустимый адрес возврата (redirect_uri)' });
+            return response.status(200).json({ status: 'ok', name: client.name || client_id });
+        }
+
+        // Пользователь нажал «Разрешить» — выдаём одноразовый code.
+        // Требует настоящий JWT: без него нельзя подтвердить вход от чужого имени.
+        if (action === 'oauthApprove' && request.method === 'POST') {
+            const email = await tryAuth(request, env.jwt);
+            if (!email)
+                return response.status(401).json({ status: 'error', message: 'Нужно войти в GeLink заново' });
+
+            const { client_id, redirect_uri, state, scope, code_challenge, code_challenge_method } = readBody(request);
+            const client = getOAuthClient(client_id);
+            if (!client || !client.redirect_uris.includes(redirect_uri))
+                return response.status(400).json({ status: 'error', message: 'Неизвестное приложение или redirect_uri' });
+            if (code_challenge && (code_challenge_method || 'plain') !== 'S256')
+                return response.status(400).json({ status: 'error', message: 'Поддерживается только PKCE S256' });
+            if (await db('EXISTS', `profile:${email}`) !== 1)
+                return response.status(401).json({ status: 'error', message: 'Аккаунт не найден' });
+
+            const code = randomHex(32);
+            await db('SET', `oauth_code:${code}`, JSON.stringify({
+                client_id, redirect_uri, email,
+                scope: normalizeScope(scope),
+                code_challenge: code_challenge || null,
+            }), 'EX', OAUTH_CODE_TTL);
+
+            const url = new URL(redirect_uri);
+            url.searchParams.set('code', code);
+            if (state) url.searchParams.set('state', state);
+            return response.status(200).json({ status: 'ok', redirect: url.toString() });
+        }
+
+        // Обмен code на access_token — вызывается СЕРВЕРОМ клиента (Minva), не браузером
+        if (action === 'oauthToken' && request.method === 'POST') {
+            const body = readBody(request);
+            let { client_id, client_secret } = body;
+            const basic = getHeader(request, 'authorization');
+            if (basic.startsWith('Basic ')) {
+                const [id, secret] = Buffer.from(basic.slice(6), 'base64').toString().split(':');
+                client_id = decodeURIComponent(id || ''); client_secret = decodeURIComponent(secret || '');
+            }
+            const oauthErr = (status, error, desc) =>
+                response.status(status).json({ error, error_description: desc });
+
+            if (body.grant_type !== 'authorization_code')
+                return oauthErr(400, 'unsupported_grant_type', 'Only authorization_code is supported');
+            const client = getOAuthClient(client_id);
+            if (!client || !safeEqual(client.secret, client_secret))
+                return oauthErr(401, 'invalid_client', 'Bad client credentials');
+            if (!body.code)
+                return oauthErr(400, 'invalid_request', 'Missing code');
+
+            // GETDEL — код можно использовать ровно один раз
+            const raw = await db('GETDEL', `oauth_code:${body.code}`);
+            if (!raw) return oauthErr(400, 'invalid_grant', 'Code is invalid or expired');
+            const data = JSON.parse(raw);
+            if (data.client_id !== client_id || data.redirect_uri !== body.redirect_uri)
+                return oauthErr(400, 'invalid_grant', 'client_id or redirect_uri mismatch');
+            if (data.code_challenge) {
+                if (!body.code_verifier || await pkceS256(body.code_verifier) !== data.code_challenge)
+                    return oauthErr(400, 'invalid_grant', 'PKCE verification failed');
+            }
+
+            const accessToken = randomHex(32);
+            await db('SET', `oauth_at:${accessToken}`, JSON.stringify({
+                email: data.email, client_id, scope: data.scope,
+            }), 'EX', OAUTH_TOKEN_TTL);
+
+            return response.status(200).json({
+                access_token: accessToken,
+                token_type:   'Bearer',
+                expires_in:   OAUTH_TOKEN_TTL,
+                scope:        data.scope,
+            });
+        }
+
+        // Данные пользователя по access_token
+        if (action === 'oauthUserinfo') {
+            const auth = getHeader(request, 'authorization');
+            if (!auth.startsWith('Bearer '))
+                return response.status(401).json({ error: 'invalid_token' });
+            const raw = await db('GET', `oauth_at:${auth.slice(7)}`);
+            if (!raw) return response.status(401).json({ error: 'invalid_token' });
+            const { email, scope } = JSON.parse(raw);
+
+            const profile = parseHash(await db('HGETALL', `profile:${email}`));
+            if (!profile.name && !profile.nickname)
+                return response.status(401).json({ error: 'invalid_token', error_description: 'Account deleted' });
+
+            const info = {
+                sub:                profile.userId || await getUserId(db, email),
+                name:               profile.name ?? '',
+                preferred_username: profile.nickname ?? '',
+                picture:            profile.avImg || null,
+                bio:                profile.bio ?? '',
+            };
+            if (scope.split(' ').includes('email')) info.email = email;
+            return response.status(200).json(info);
+        }
 
         // ══════════════════════════════════════════════════════
         //  ПРОВЕРКА ДОСТУПНОСТИ email/никнейма — публичный, НИЧЕГО НЕ ПИШЕТ.
@@ -343,7 +509,8 @@ export default async function handler(request, response) {
             // показывался бы как "Аккаунт удалён".
             await db('SREM', 'deleted_users', emailLower);
 
-            return response.status(200).json({ status: 'ok', userId });
+            const regToken = await signToken({ email: emailLower }, env.jwt);
+            return response.status(200).json({ status: 'ok', userId, token: regToken });
         }
 
         // ══════════════════════════════════════════════════════
