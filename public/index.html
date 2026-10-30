@@ -2880,6 +2880,7 @@
                             const loginData = await loginRes.json();
                             if (loginData.status === 'error') return alert(loginData.message);
                             serverUser = loginData.user;
+                            serverUser.token = loginData.token; // JWT нужен для «Войти через GeLink»
                         } catch(err) {
                             return alert("Ошибка соединения с сервером. Попробуйте снова.");
                         }
@@ -2932,6 +2933,7 @@
                                 // userId выдаётся сервером при регистрации — на нём (а не на email)
                                 // строится id личных комнат, поэтому важно сохранить его в сессию.
                                 user.userId = regData.userId;
+                                user.token = regData.token;
                             } catch (err) {
                                 alert('Ошибка соединения с сервером. Попробуйте снова.');
                                 return;
@@ -2948,6 +2950,7 @@
                             bio: user.bio || ''
                         };
                         localStorage.setItem('ge_v9_token', JSON.stringify(geEngine.state.session));
+                        if (user.token) localStorage.setItem('ge_jwt', user.token);
 
                         // Пароль нужен для E2E-ключей (создать/восстановить резервную копию) —
                         // берём его, пока он ещё доступен: при регистрации он есть в pendingUser,
@@ -2967,6 +2970,13 @@
                         }).catch(() => {});
 
                         geEngine.init(passwordForE2E);
+
+                        // Вход начался со страницы «Войти через GeLink» — возвращаемся на неё
+                        const oauthReturn = sessionStorage.getItem('ge_oauth_return');
+                        if (oauthReturn && oauthReturn.startsWith('/oauth/authorize?')) {
+                            sessionStorage.removeItem('ge_oauth_return');
+                            location.href = oauthReturn;
+                        }
                     } else {
                         alert("Неверный код подтверждения!");
                     }
@@ -3118,6 +3128,7 @@
                 exit() {
                     if (confirm("Выйти?")) { 
                         localStorage.removeItem('ge_v9_token'); 
+                        localStorage.removeItem('ge_jwt');
                         location.reload(); 
                     }
                 },
@@ -3160,6 +3171,7 @@
                                 `ge_e2e_backup_done_${currentEmail}`,
                             ].forEach(k => localStorage.removeItem(k));
                             localStorage.removeItem('ge_v9_token');
+                            localStorage.removeItem('ge_jwt');
                             alert("Ваш аккаунт был полностью удален.");
                             location.reload();
                         }
