@@ -298,6 +298,19 @@
             margin-top: 15px;
         }
 
+        .ge-minva-or { display: flex; align-items: center; gap: 12px; margin: 18px 0 4px; color: var(--text-secondary); font-size: 13px; }
+        .ge-minva-or::before, .ge-minva-or::after { content: ''; flex: 1; height: 1px; background: var(--border-base, rgba(128,128,128,.25)); }
+        .ge-minva-btn {
+            width: 100%; margin-top: 10px; padding: 16px; display: flex; align-items: center; justify-content: center; gap: 10px;
+            background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border-base, rgba(128,128,128,.25));
+            border-radius: var(--radius-md); font-size: 15px; font-weight: 700; cursor: pointer;
+        }
+        .ge-minva-btn:hover { filter: brightness(0.97); }
+        .ge-minva-mark {
+            width: 26px; height: 26px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center;
+            background: linear-gradient(135deg, #2563eb, #7c3aed); color: #fff; font-weight: 800; font-size: 14px;
+        }
+
         .ge-btn-submit:hover {
             background: var(--ge-primary-dark);
             transform: translateY(-2px);
@@ -2374,6 +2387,10 @@
                         </div>
                     </div>
                     <button class="ge-btn-submit" onclick="geEngine.auth.handle('login')">ВОЙТИ В АККАУНТ</button>
+                    <div class="ge-minva-block ge-hidden">
+                        <div class="ge-minva-or">или</div>
+                        <button type="button" class="ge-minva-btn" onclick="geEngine.minva.start('login')"><span class="ge-minva-mark">M</span>Войти через Minva</button>
+                    </div>
                 </div>
                 
                 <div id="login-otp-section" class="ge-hidden" style="animation: ge-slide-up 0.3s ease;">
@@ -2483,6 +2500,10 @@
                         <span id="up-privacy-error" class="ge-error-text ge-hidden" style="margin-top:4px;">Необходимо принять политику конфиденциальности</span>
                     </div>
                     <button class="ge-btn-submit" onclick="geEngine.auth.handle('reg')">ОТПРАВИТЬ КОД</button>
+                    <div class="ge-minva-block ge-hidden">
+                        <div class="ge-minva-or">или</div>
+                        <button type="button" class="ge-minva-btn" onclick="geEngine.minva.start('login')"><span class="ge-minva-mark">M</span>Войти через Minva</button>
+                    </div>
                 </div>
 
                 <div id="reg-otp-section" class="ge-hidden" style="animation: ge-slide-up 0.3s ease;">
@@ -6231,7 +6252,7 @@
                     // этого редкого случая явно спрашиваем пароль, чтобы попытаться
                     // восстановить старую переписку, а не молча начинать с нуля.
                     let password = passwordForBackup;
-                    if (!password) {
+                    if (!password && !this._noPrompt) {
                         password = prompt(`Чтобы восстановить доступ к зашифрованной переписке на этом устройстве, введите пароль от аккаунта ${email}:`) || '';
                     }
 
@@ -6945,6 +6966,95 @@
 
 
 
+            // ===== «ВОЙТИ ЧЕРЕЗ MINVA» =====
+            minva: {
+                enabled: false,
+                ERRORS: {
+                    denied: 'Вход отменён в Minva.',
+                    state: 'Сеанс входа устарел или открыт в другой вкладке. Попробуйте ещё раз.',
+                    exchange: 'Не удалось получить данные из Minva. Попробуйте ещё раз.',
+                    not_configured: 'Вход через Minva сейчас недоступен.',
+                    email_exists: 'Аккаунт GeLink с почтой вашего Minva уже есть. Войдите в него паролем и привяжите Minva в настройках (⚙ → Minva).',
+                    taken: 'Этот аккаунт Minva уже привязан к другому аккаунту GeLink.',
+                    already_linked: 'К вашему аккаунту GeLink уже привязан другой аккаунт Minva.',
+                },
+                async loadConfig() {
+                    try {
+                        const res = await fetch('/api/index?action=minvaConfig');
+                        this.enabled = Boolean((await res.json()).enabled);
+                    } catch { this.enabled = false; }
+                    document.querySelectorAll('.ge-minva-block').forEach(el => el.classList.toggle('ge-hidden', !this.enabled));
+                    document.getElementById('ge-minva-popup-item')?.classList.toggle('ge-hidden', !this.enabled);
+                },
+                async start(mode) {
+                    const headers = { 'Content-Type': 'application/json' };
+                    if (mode === 'link') {
+                        const jwt = localStorage.getItem('ge_jwt');
+                        if (!jwt) return alert('Чтобы привязать Minva, выйдите и войдите в GeLink заново.');
+                        headers.Authorization = 'Bearer ' + jwt;
+                    }
+                    try {
+                        const res = await fetch('/api/index?action=minvaStart', { method: 'POST', headers, body: JSON.stringify({ mode }) });
+                        const data = await res.json();
+                        if (data.status !== 'ok') return alert(data.message || 'Ошибка');
+                        location.href = data.url;
+                    } catch { alert('Ошибка соединения с сервером. Попробуйте снова.'); }
+                },
+                // Возврат из Minva: ?minva_ticket=… (вход), ?minva=linked, ?minva_error=…
+                // Возвращает true, если идёт вход по билету (тогда сохранённую сессию не поднимаем).
+                handleReturn() {
+                    const q = new URLSearchParams(location.search);
+                    const ticket = q.get('minva_ticket'), err = q.get('minva_error'), linked = q.get('minva');
+                    if (!ticket && !err && !linked) return false;
+                    history.replaceState(null, '', location.pathname);
+                    if (err) setTimeout(() => alert(this.ERRORS[err] || this.ERRORS.exchange), 50);
+                    if (linked === 'linked') setTimeout(() => alert('Аккаунт Minva привязан. Теперь можно входить через Minva.'), 300);
+                    if (!ticket) return false;
+                    this.finish(ticket);
+                    return true;
+                },
+                async finish(ticket) {
+                    try {
+                        const res = await fetch('/api/index?action=minvaFinish', {
+                            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ticket }),
+                        });
+                        const data = await res.json();
+                        if (data.status !== 'ok') { alert(data.message || 'Ошибка входа'); return; }
+                        const u = data.user;
+                        geEngine.state.session = {
+                            name: u.name, nickname: u.nickname, email: u.email, userId: u.userId,
+                            avColor: u.avColor || 'var(--ge-accent-gradient)', avImg: u.avImg || null, bio: u.bio || '',
+                        };
+                        localStorage.setItem('ge_v9_token', JSON.stringify(geEngine.state.session));
+                        localStorage.setItem('ge_jwt', data.token);
+                        // Новый аккаунт или аккаунт без пароля (создан через Minva): не спрашиваем пароль,
+                        // которого у человека нет — на новом устройстве просто создаются новые ключи.
+                        if (!data.hasE2E || !data.passwordSet) geEngine.e2e._noPrompt = true;
+                        geEngine.init('');
+                        if (data.isNew) setTimeout(() => alert('Добро пожаловать в GeLink! Аккаунт создан через Minva. Пароль можно задать в профиле.'), 400);
+                    } catch { alert('Ошибка соединения с сервером. Попробуйте снова.'); }
+                },
+                async openSettings() {
+                    document.getElementById('ge-settings-popup').style.display = 'none';
+                    const jwt = localStorage.getItem('ge_jwt');
+                    if (!jwt) return alert('Чтобы управлять привязкой Minva, выйдите и войдите в GeLink заново.');
+                    let st;
+                    try {
+                        st = await (await fetch('/api/index?action=minvaStatus', { headers: { Authorization: 'Bearer ' + jwt } })).json();
+                    } catch { return alert('Ошибка соединения с сервером.'); }
+                    if (st.status !== 'ok') return alert(st.message || 'Ошибка');
+                    if (!st.linked) {
+                        if (confirm('Привязать аккаунт Minva? После этого в GeLink можно будет входить через Minva.')) this.start('link');
+                        return;
+                    }
+                    if (!st.passwordSet) return alert('Minva привязан. Это единственный способ входа в этот аккаунт — чтобы отвязать Minva, сначала задайте пароль в профиле.');
+                    if (!confirm('Minva привязан к аккаунту. Отвязать?')) return;
+                    const res = await fetch('/api/index?action=minvaUnlink', { method: 'POST', headers: { Authorization: 'Bearer ' + jwt } });
+                    const data = await res.json();
+                    alert(data.status === 'ok' ? 'Minva отвязан.' : (data.message || 'Ошибка'));
+                },
+            },
+
             init(passwordForE2E) {
                 document.getElementById('ge-auth-layer').classList.add('ge-hidden');
                 document.getElementById('ge-main-app').classList.add('ge-flex');
@@ -7064,8 +7174,10 @@
                 geEngine.state.snowInterval = setInterval(geEngine.effects.createSnowflake, 150);
             }
 
+            geEngine.minva.loadConfig();
+            const minvaLogin = geEngine.minva.handleReturn();
             const saved = localStorage.getItem('ge_v9_token');
-            if (saved) { geEngine.state.session = JSON.parse(saved); geEngine.init(); }
+            if (saved && !minvaLogin) { geEngine.state.session = JSON.parse(saved); geEngine.init(); }
 
             document.getElementById('ge-main-input').addEventListener('keypress', (e) => {
                 if (e.key === 'Enter') {
@@ -7108,6 +7220,10 @@
         <button class="ge-popup-item" onclick="geEngine.profile.open()">
             <span class="ge-popup-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
             <span class="ge-popup-label">Профиль</span>
+        </button>
+        <button class="ge-popup-item ge-hidden" id="ge-minva-popup-item" onclick="geEngine.minva.openSettings()">
+            <span class="ge-popup-icon"><span class="ge-minva-mark" style="width:20px;height:20px;font-size:11px;border-radius:6px;">M</span></span>
+            <span class="ge-popup-label" id="ge-minva-popup-label">Minva</span>
         </button>
         <button class="ge-popup-item" onclick="geEngine.ui.openDonate()">
             <span class="ge-popup-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></span>
