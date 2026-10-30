@@ -317,6 +317,73 @@ function getHeader(request, name) {
     return request.headers.get?.(name) ?? request.headers[name] ?? '';
 }
 
+// ── «Войти через Minva»: GeLink как OAuth-клиент Minva ─────────
+// Переменные окружения: MINVA_URL, MINVA_CLIENT_ID (по умолчанию gelink), MINVA_CLIENT_SECRET,
+// PUBLIC_URL (адрес GeLink, необязательно — иначе берётся из заголовков запроса).
+// Адрес возврата, который нужно зарегистрировать в Minva: <PUBLIC_URL>/api/index?action=minvaCallback
+function minvaConfig() {
+    const url = (process.env.MINVA_URL || '').replace(/\/+$/, '');
+    const id = process.env.MINVA_CLIENT_ID || 'gelink';
+    const secret = process.env.MINVA_CLIENT_SECRET || '';
+    return { url, id, secret, enabled: Boolean(url && secret) };
+}
+
+function publicBase(request) {
+    if (process.env.PUBLIC_URL) return process.env.PUBLIC_URL.replace(/\/+$/, '');
+    const host = getHeader(request, 'x-forwarded-host') || getHeader(request, 'host');
+    const proto = (getHeader(request, 'x-forwarded-proto') || 'https').split(',')[0].trim();
+    return `${proto}://${host}`;
+}
+
+function readCookie(request, name) {
+    for (const part of String(getHeader(request, 'cookie') || '').split(/;\s*/)) {
+        const i = part.indexOf('=');
+        if (i > 0 && part.slice(0, i) === name) return decodeURIComponent(part.slice(i + 1));
+    }
+    return null;
+}
+
+// Cookie привязывает вход к этому браузеру: чужая ссылка с code/state у жертвы не сработает.
+function minvaCookie(request, value, maxAge) {
+    const secure = publicBase(request).startsWith('https://') ? '; Secure' : '';
+    return `ge_minva=${encodeURIComponent(value)}; Path=/api; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure}`;
+}
+
+function redirectTo(response, url, cookie) {
+    if (cookie) response.setHeader('Set-Cookie', cookie);
+    response.setHeader('Location', url);
+    response.setHeader('Cache-Control', 'no-store');
+    return response.status(302).end();
+}
+
+function cleanNick(raw) {
+    let n = String(raw || '').toLowerCase().replace(/[^a-z0-9_]/g, '');
+    if (!n || !/^[a-z]/.test(n)) n = 'm' + n;
+    return n.slice(0, 20);
+}
+
+async function freeNick(db, raw) {
+    const base = cleanNick(raw);
+    const tries = [base, ...Array.from({ length: 6 }, () => base + (1000 + Math.floor(Math.random() * 9000))), 'm' + randomHex(5)];
+    for (const n of tries) if (!(await db('GET', `nick:${n}`))) return n;
+    return 'm' + randomHex(8);
+}
+
+async function minvaProfile(cfg, code, verifier, redirectUri) {
+    const res = await fetch(`${cfg.url}/api/v1/oauth/token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ grant_type: 'authorization_code', code, redirect_uri: redirectUri,
+            client_id: cfg.id, client_secret: cfg.secret, code_verifier: verifier }),
+    });
+    const tok = await res.json().catch(() => ({}));
+    if (!res.ok || !tok.access_token) throw new Error('token: ' + (tok.error || res.status));
+    const res2 = await fetch(`${cfg.url}/api/v1/oauth/userinfo`, { headers: { Authorization: `Bearer ${tok.access_token}` } });
+    const info = await res2.json().catch(() => ({}));
+    if (!res2.ok || typeof info.sub !== 'string' || !info.sub) throw new Error('userinfo: ' + res2.status);
+    return info;
+}
+
 export default async function handler(request, response) {
     const env = {
         url:       process.env.UPSTASH_URL,
@@ -444,6 +511,147 @@ export default async function handler(request, response) {
             };
             if (scope.split(' ').includes('email')) info.email = email;
             return response.status(200).json(info);
+        }
+
+        // ══════════════════════════════════════════════════════
+        //  «Войти через Minva»
+        // ══════════════════════════════════════════════════════
+        if (action === 'minvaConfig') {
+            return response.status(200).json({ enabled: minvaConfig().enabled });
+        }
+
+        // Шаг 1: фронт просит адрес страницы согласия Minva. mode=link — привязка к текущему аккаунту (нужен JWT).
+        if (action === 'minvaStart' && request.method === 'POST') {
+            const cfg = minvaConfig();
+            if (!cfg.enabled) return response.status(404).json({ status: 'error', message: 'Вход через Minva не настроен' });
+            const { mode } = readBody(request);
+            let email = null;
+            if (mode === 'link') {
+                email = await tryAuth(request, env.jwt);
+                if (!email) return response.status(401).json({ status: 'error', message: 'Войдите в GeLink заново' });
+            }
+            const state = randomHex(24);
+            const browser = randomHex(16);
+            const verifier = bytesToBase64(crypto.getRandomValues(new Uint8Array(48))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+            await db('SET', `minva_state:${state}`, JSON.stringify({ verifier, mode: mode === 'link' ? 'link' : 'login', email, browser }), 'EX', 600);
+            const url = new URL(cfg.url + '/oauth/authorize');
+            url.search = new URLSearchParams({
+                response_type: 'code', client_id: cfg.id, redirect_uri: publicBase(request) + '/api/index?action=minvaCallback',
+                scope: 'profile email', state, code_challenge: await pkceS256(verifier), code_challenge_method: 'S256',
+            }).toString();
+            response.setHeader('Set-Cookie', minvaCookie(request, browser, 600));
+            return response.status(200).json({ status: 'ok', url: url.toString() });
+        }
+
+        // Шаг 2: Minva вернула браузер с code и state
+        if (action === 'minvaCallback') {
+            const cfg = minvaConfig();
+            const fail = (code) => redirectTo(response, `/?minva_error=${code}`, minvaCookie(request, '', 0));
+            if (!cfg.enabled) return fail('not_configured');
+            const { state, code, error } = request.query;
+            const raw = state ? await db('GETDEL', `minva_state:${state}`) : null;
+            const flow = raw ? JSON.parse(raw) : null;
+            if (!flow || !safeEqual(flow.browser, readCookie(request, 'ge_minva'))) return fail('state');
+            if (error) return fail(error === 'access_denied' ? 'denied' : 'exchange');
+            if (!code) return fail('exchange');
+
+            let info;
+            try {
+                info = await minvaProfile(cfg, code, flow.verifier, publicBase(request) + '/api/index?action=minvaCallback');
+            } catch (e) {
+                console.error('[GeLink minva]', e.message);
+                return fail('exchange');
+            }
+            const sub = info.sub;
+            const linkedEmail = await db('GET', `minva_sub:${sub}`);
+
+            if (flow.mode === 'link') {
+                if (await db('EXISTS', `profile:${flow.email}`) !== 1) return fail('state');
+                if (linkedEmail && linkedEmail !== flow.email) return fail('taken');
+                const current = await db('HGET', `profile:${flow.email}`, 'minvaSub');
+                if (current && current !== sub) return fail('already_linked');
+                await db('SET', `minva_sub:${sub}`, flow.email);
+                await db('HSET', `profile:${flow.email}`, 'minvaSub', sub);
+                return redirectTo(response, '/?minva=linked', minvaCookie(request, '', 0));
+            }
+
+            let email = null, isNew = false;
+            if (linkedEmail && await db('EXISTS', `profile:${linkedEmail}`) === 1) {
+                email = linkedEmail;
+            } else {
+                if (linkedEmail) await db('DEL', `minva_sub:${sub}`); // аккаунт GeLink был удалён
+                // Почту Minva проверяет на сервере, поэтому ей можно доверять. Но если такой аккаунт GeLink
+                // уже есть, не склеиваем автоматически: пусть войдёт паролем и привяжет Minva в настройках.
+                const minvaEmail = info.email && info.email_verified ? String(info.email).trim().toLowerCase() : null;
+                if (minvaEmail && await db('SISMEMBER', 'all_users', minvaEmail) === 1) return fail('email_exists');
+                email = minvaEmail || `minva-${sub.replace(/[^a-z0-9]/gi, '').slice(0, 16).toLowerCase()}@users.minva`;
+                if (await db('SISMEMBER', 'all_users', email) === 1) return fail('email_exists');
+                const nick = await freeNick(db, info.preferred_username);
+                const salt = generateSalt();
+                const userId = await generateUniqueUserId(db);
+                const fields = [
+                    'name', String(info.name || nick).slice(0, 64), 'nickname', nick,
+                    'avColor', 'var(--ge-accent-gradient)',
+                    'password', await hashPassword(randomHex(32), salt), 'salt', salt, // пароль никто не знает
+                    'userId', userId, 'minvaSub', sub, 'minvaOnly', '1',
+                ];
+                if (info.bio) fields.push('bio', String(info.bio).slice(0, 150));
+                if (typeof info.picture === 'string' && info.picture.startsWith('data:image/') && info.picture.length < 3_000_000) fields.push('avImg', info.picture);
+                await db('SADD', 'all_users', email);
+                await db('HSET', `profile:${email}`, ...fields);
+                await db('SET', `id_email:${userId}`, email);
+                await db('SET', `nick:${nick}`, email);
+                await db('SET', `minva_sub:${sub}`, email);
+                await db('SREM', 'deleted_users', email);
+                isNew = true;
+            }
+            const ticket = randomHex(24);
+            await db('SET', `minva_ticket:${ticket}`, JSON.stringify({ email, isNew, browser: flow.browser }), 'EX', 120);
+            return redirectTo(response, `/?minva_ticket=${ticket}`);
+        }
+
+        // Шаг 3: страница GeLink меняет одноразовый билет на обычную сессию (как после входа)
+        if (action === 'minvaFinish' && request.method === 'POST') {
+            const { ticket } = readBody(request);
+            const raw = ticket ? await db('GETDEL', `minva_ticket:${ticket}`) : null;
+            const data = raw ? JSON.parse(raw) : null;
+            response.setHeader('Set-Cookie', minvaCookie(request, '', 0));
+            if (!data || !safeEqual(data.browser, readCookie(request, 'ge_minva')))
+                return response.status(400).json({ status: 'error', message: 'Вход через Minva устарел. Попробуйте ещё раз.' });
+            const profile = parseHash(await db('HGETALL', `profile:${data.email}`));
+            if (!profile.nickname && !profile.name)
+                return response.status(400).json({ status: 'error', message: 'Аккаунт не найден' });
+            const userId = profile.userId || await getUserId(db, data.email);
+            return response.status(200).json({
+                status: 'ok',
+                token: await signToken({ email: data.email }, env.jwt),
+                isNew: data.isNew,
+                hasE2E: Boolean(profile.pubKey),
+                passwordSet: profile.minvaOnly !== '1',
+                user: {
+                    email: data.email, userId,
+                    name: profile.name ?? data.email, nickname: profile.nickname ?? '',
+                    avColor: profile.avColor ?? 'var(--ge-accent-gradient)', avImg: profile.avImg ?? null, bio: profile.bio ?? '',
+                },
+            });
+        }
+
+        if (action === 'minvaStatus') {
+            const email = await tryAuth(request, env.jwt);
+            if (!email) return response.status(401).json({ status: 'error', message: 'Войдите в GeLink заново' });
+            const [sub, only] = await Promise.all([db('HGET', `profile:${email}`, 'minvaSub'), db('HGET', `profile:${email}`, 'minvaOnly')]);
+            return response.status(200).json({ status: 'ok', enabled: minvaConfig().enabled, linked: Boolean(sub), passwordSet: only !== '1' });
+        }
+
+        if (action === 'minvaUnlink' && request.method === 'POST') {
+            const email = await tryAuth(request, env.jwt);
+            if (!email) return response.status(401).json({ status: 'error', message: 'Войдите в GeLink заново' });
+            const [sub, only] = await Promise.all([db('HGET', `profile:${email}`, 'minvaSub'), db('HGET', `profile:${email}`, 'minvaOnly')]);
+            if (only === '1')
+                return response.status(400).json({ status: 'error', message: 'Сначала задайте пароль в профиле — сейчас Minva единственный способ войти в аккаунт.' });
+            if (sub) await db('DEL', `minva_sub:${sub}`);
+            await db('HDEL', `profile:${email}`, 'minvaSub');
+            return response.status(200).json({ status: 'ok' });
         }
 
         // ══════════════════════════════════════════════════════
@@ -604,6 +812,7 @@ export default async function handler(request, response) {
             if (password) {
                 const newSalt = generateSalt();
                 fields.push('password', await hashPassword(password, newSalt), 'salt', newSalt);
+                await db('HDEL', `profile:${emailLower}`, 'minvaOnly'); // пароль задан — Minva больше не единственный вход
             }
             if (bio !== undefined) fields.push('bio', (bio || '').toString().slice(0, 150));
 
@@ -684,6 +893,11 @@ export default async function handler(request, response) {
 
             try {
                 await db('DEL', `contact_requests:${emailLower}`);
+            } catch {}
+
+            try {
+                const minvaSub = await db('HGET', `profile:${emailLower}`, 'minvaSub');
+                if (minvaSub) await db('DEL', `minva_sub:${minvaSub}`);
             } catch {}
 
             // ── КРИТИЧНАЯ ЧАСТЬ — должна выполниться, что бы ни случилось выше ──
