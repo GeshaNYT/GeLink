@@ -308,9 +308,12 @@
         .ge-minva-btn:hover { filter: brightness(0.97); }
         .ge-minva-mark {
             width: 26px; height: 26px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center;
-            background: linear-gradient(135deg, #2563eb, #7c3aed); flex-shrink: 0; padding: 0; line-height: 0;
+            background: linear-gradient(135deg, #2563eb, #7c3aed); color: #fff; font-weight: 800; font-size: 14px;
+            flex-shrink: 0; padding: 0; line-height: 1; letter-spacing: 0;
         }
-        .ge-minva-mark svg { display: block; }
+        /* Центрируем по высоте заглавной буквы, а не по строке шрифта: у разных шрифтов (Segoe UI в Windows,
+           SF на Mac) отступы над и под буквами разные, и без этого «M» садится ниже центра. */
+        .ge-minva-letter { display: block; text-box: trim-both cap alphabetic; }
 
         .ge-btn-submit:hover {
             background: var(--ge-primary-dark);
@@ -2390,7 +2393,7 @@
                     <button class="ge-btn-submit" onclick="geEngine.auth.handle('login')">ВОЙТИ В АККАУНТ</button>
                     <div class="ge-minva-block ge-hidden">
                         <div class="ge-minva-or">или</div>
-                        <button type="button" class="ge-minva-btn" onclick="geEngine.minva.start('login')"><span class="ge-minva-mark"><svg width="21" height="21" viewBox="0 0 24 24" aria-hidden="true"><path fill="#fff" d="M5.5 18.2V5.8h3.5L12 12.1l3-6.3h3.5v12.4h-2.9v-7.2l-2.5 5.2h-2.2l-2.5-5.2v7.2z"/></svg></span>Войти через Minva</button>
+                        <button type="button" class="ge-minva-btn" onclick="geEngine.minva.start('login')"><span class="ge-minva-mark"><span class="ge-minva-letter">M</span></span>Войти через Minva</button>
                     </div>
                 </div>
                 
@@ -2503,7 +2506,7 @@
                     <button class="ge-btn-submit" onclick="geEngine.auth.handle('reg')">ОТПРАВИТЬ КОД</button>
                     <div class="ge-minva-block ge-hidden">
                         <div class="ge-minva-or">или</div>
-                        <button type="button" class="ge-minva-btn" onclick="geEngine.minva.start('login')"><span class="ge-minva-mark"><svg width="21" height="21" viewBox="0 0 24 24" aria-hidden="true"><path fill="#fff" d="M5.5 18.2V5.8h3.5L12 12.1l3-6.3h3.5v12.4h-2.9v-7.2l-2.5 5.2h-2.2l-2.5-5.2v7.2z"/></svg></span>Войти через Minva</button>
+                        <button type="button" class="ge-minva-btn" onclick="geEngine.minva.start('login')"><span class="ge-minva-mark"><span class="ge-minva-letter">M</span></span>Войти через Minva</button>
                     </div>
                 </div>
 
@@ -7223,7 +7226,7 @@
             <span class="ge-popup-label">Профиль</span>
         </button>
         <button class="ge-popup-item ge-hidden" id="ge-minva-popup-item" onclick="geEngine.minva.openSettings()">
-            <span class="ge-popup-icon"><span class="ge-minva-mark" style="width:20px;height:20px;border-radius:6px;"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="#fff" d="M5.5 18.2V5.8h3.5L12 12.1l3-6.3h3.5v12.4h-2.9v-7.2l-2.5 5.2h-2.2l-2.5-5.2v7.2z"/></svg></span></span>
+            <span class="ge-popup-icon"><span class="ge-minva-mark" style="width:20px;height:20px;border-radius:6px;font-size:11px;"><span class="ge-minva-letter">M</span></span></span>
             <span class="ge-popup-label" id="ge-minva-popup-label">Minva</span>
         </button>
         <button class="ge-popup-item" onclick="geEngine.ui.openDonate()">
