@@ -308,8 +308,9 @@
         .ge-minva-btn:hover { filter: brightness(0.97); }
         .ge-minva-mark {
             width: 26px; height: 26px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center;
-            background: linear-gradient(135deg, #2563eb, #7c3aed); color: #fff; font-weight: 800; font-size: 14px;
+            background: linear-gradient(135deg, #2563eb, #7c3aed); flex-shrink: 0; padding: 0; line-height: 0;
         }
+        .ge-minva-mark svg { display: block; }
 
         .ge-btn-submit:hover {
             background: var(--ge-primary-dark);
@@ -2389,7 +2390,7 @@
                     <button class="ge-btn-submit" onclick="geEngine.auth.handle('login')">ВОЙТИ В АККАУНТ</button>
                     <div class="ge-minva-block ge-hidden">
                         <div class="ge-minva-or">или</div>
-                        <button type="button" class="ge-minva-btn" onclick="geEngine.minva.start('login')"><span class="ge-minva-mark">M</span>Войти через Minva</button>
+                        <button type="button" class="ge-minva-btn" onclick="geEngine.minva.start('login')"><span class="ge-minva-mark"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 17.5v-11l5.5 7 5.5-7v11"/></svg></span>Войти через Minva</button>
                     </div>
                 </div>
                 
@@ -2502,7 +2503,7 @@
                     <button class="ge-btn-submit" onclick="geEngine.auth.handle('reg')">ОТПРАВИТЬ КОД</button>
                     <div class="ge-minva-block ge-hidden">
                         <div class="ge-minva-or">или</div>
-                        <button type="button" class="ge-minva-btn" onclick="geEngine.minva.start('login')"><span class="ge-minva-mark">M</span>Войти через Minva</button>
+                        <button type="button" class="ge-minva-btn" onclick="geEngine.minva.start('login')"><span class="ge-minva-mark"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 17.5v-11l5.5 7 5.5-7v11"/></svg></span>Войти через Minva</button>
                     </div>
                 </div>
 
@@ -7222,7 +7223,7 @@
             <span class="ge-popup-label">Профиль</span>
         </button>
         <button class="ge-popup-item ge-hidden" id="ge-minva-popup-item" onclick="geEngine.minva.openSettings()">
-            <span class="ge-popup-icon"><span class="ge-minva-mark" style="width:20px;height:20px;font-size:11px;border-radius:6px;">M</span></span>
+            <span class="ge-popup-icon"><span class="ge-minva-mark" style="width:20px;height:20px;border-radius:6px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 17.5v-11l5.5 7 5.5-7v11"/></svg></span></span>
             <span class="ge-popup-label" id="ge-minva-popup-label">Minva</span>
         </button>
         <button class="ge-popup-item" onclick="geEngine.ui.openDonate()">
