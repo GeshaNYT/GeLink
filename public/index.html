@@ -311,6 +311,15 @@
             cursor: default; font-weight: 500; text-transform: none; letter-spacing: 0; }
         .ge-bot-readonly { width: 100%; padding: 14px; text-align: center; font-size: 13px; color: var(--text-secondary); }
 
+        .ge-user-block-btn { width: 100%; margin-top: 14px; border: none; border-radius: 12px; padding: 12px; font-size: 14px; font-weight: 600;
+            cursor: pointer; background: rgba(255,64,80,.1); color: var(--ge-error); }
+        .ge-user-block-btn.is-blocked { background: var(--bg-input); color: var(--text-primary); }
+        .ge-blocked-msg { align-self: flex-start; max-width: 75%; margin: 2px 0; padding: 8px 12px; border-radius: 14px; font-size: 13px;
+            color: var(--text-secondary); background: var(--bg-input); border: 1px dashed var(--border-base); cursor: pointer; user-select: none; }
+        .ge-blocked-msg u { color: var(--ge-primary); text-decoration: none; font-weight: 600; margin-left: 4px; }
+        .ge-blocked-msg:hover u { text-decoration: underline; }
+        .ge-bl-empty { font-size: 13px; color: var(--text-secondary); padding: 10px 4px; }
+
         .ge-dev-section { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--text-secondary); margin: 16px 0 8px; text-align: left; }
         .ge-dev-item { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 14px; background: var(--bg-input); margin-bottom: 8px; text-align: left; }
         .ge-dev-icon { width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
@@ -1625,6 +1634,40 @@
         .ge-attach-menu-item:hover { background: var(--ge-primary-soft); color: var(--ge-primary); }
 
         /* --- ВЛОЖЕНИЯ В СООБЩЕНИЯХ (фото/файл) --- */
+        /* ── Панель эмодзи / GIF ── */
+        #ge-ex-btn.active { color: var(--ge-primary); background: var(--ge-primary-soft); }
+        .ge-ex-panel { display: none; flex-direction: column; height: 340px; background: var(--bg-panel); border-top: 1px solid var(--border-base); }
+        .ge-ex-panel.active { display: flex; }
+        .ge-ex-tabs { display: flex; gap: 6px; padding: 10px 14px 6px; align-items: center; }
+        .ge-ex-tab { border: none; background: var(--bg-input); color: var(--text-secondary); border-radius: 10px; padding: 7px 14px; font-weight: 700; font-size: 13px; cursor: pointer; }
+        .ge-ex-tab.active { background: var(--ge-primary); color: #fff; }
+        .ge-ex-search { flex: 1; min-width: 0; border: none; outline: none; background: var(--bg-input); color: var(--text-primary); border-radius: 10px; padding: 8px 12px; font-size: 14px; }
+        .ge-ex-body { flex: 1; overflow-y: auto; padding: 4px 12px 12px; }
+        .ge-ex-cats { display: flex; gap: 2px; padding: 0 12px 6px; overflow-x: auto; scrollbar-width: none; }
+        .ge-ex-cat { border: none; background: none; font-size: 18px; padding: 4px 6px; border-radius: 8px; cursor: pointer; opacity: .6; flex-shrink: 0; }
+        .ge-ex-cat:hover, .ge-ex-cat.active { opacity: 1; background: var(--bg-input); }
+        .ge-ex-cat-title { font-size: 12px; font-weight: 700; color: var(--text-secondary); margin: 10px 4px 4px; }
+        .ge-emoji-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(38px, 1fr)); }
+        .ge-emoji { border: none; background: none; font-size: 26px; line-height: 1; padding: 6px 0; border-radius: 8px; cursor: pointer;
+            font-family: "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif; }
+        .ge-emoji:hover { background: var(--bg-input); }
+        .ge-gif-grid { columns: 3 150px; column-gap: 6px; }
+        .ge-gif-cell { position: relative; break-inside: avoid; margin-bottom: 6px; border-radius: 10px; overflow: hidden; cursor: pointer; background: var(--bg-input); }
+        .ge-gif-cell video, .ge-gif-cell img { width: 100%; display: block; }
+        .ge-gif-star { position: absolute; top: 4px; right: 4px; width: 28px; height: 28px; border-radius: 50%; border: none; cursor: pointer;
+            background: rgba(0,0,0,.45); color: #fff; font-size: 15px; line-height: 28px; opacity: 0; transition: opacity .15s; }
+        .ge-gif-cell:hover .ge-gif-star, .ge-gif-star.on { opacity: 1; }
+        .ge-gif-star.on { color: #ffcc00; }
+        .ge-ex-note { text-align: center; color: var(--text-secondary); font-size: 13px; padding: 28px 12px; line-height: 1.5; }
+        .ge-ex-more { display: block; margin: 6px auto 0; border: none; background: var(--bg-input); color: var(--text-primary); border-radius: 10px; padding: 8px 16px; cursor: pointer; font-weight: 600; }
+        .ge-msg-gif-wrap { position: relative; }
+        .ge-msg-gif { max-width: 260px; max-height: 300px; border-radius: 14px; display: block; background: rgba(0,0,0,.06); }
+        .ge-msg-gif-wrap .ge-gif-star { top: 6px; right: 6px; }
+        .ge-msg-gif-wrap:hover .ge-gif-star { opacity: 1; }
+        .ge-gif-badge { position: absolute; left: 8px; top: 8px; background: rgba(0,0,0,.5); color: #fff; font-size: 10px; font-weight: 800; padding: 2px 5px; border-radius: 5px; pointer-events: none; }
+        .ge-msg-text.ge-big-emoji { font-size: 42px; line-height: 1.15; }
+        @media (hover: none) { .ge-gif-star { opacity: .85; } }
+
         .ge-msg-image {
             max-width: 260px;
             max-height: 320px;
@@ -2307,6 +2350,37 @@
     </div>
 
     <!-- Поддержать проект -->
+    <div id="ge-modal-privacy-settings" class="ge-modal-overlay" onclick="if(event.target===this)geEngine.privacy.close()">
+        <div class="ge-modal-content ge-group-modal-sm" style="text-align:center;">
+            <div class="ge-group-success-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
+            <h2 class="ge-group-modal-title">Конфиденциальность</h2>
+            <p class="ge-group-modal-sub">Где открыт ваш аккаунт и кто не может вам писать</p>
+            <div class="ge-group-action-list">
+                <button class="ge-group-action-btn" onclick="geEngine.privacy.close(); geEngine.devices.open()">
+                    <span class="ge-group-action-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="14" height="10" rx="2"/><path d="M6 18h6"/><rect x="17" y="8" width="5" height="12" rx="1.2"/></svg></span>
+                    <span class="ge-group-action-text"><b>Устройства</b><small id="ge-privacy-devices-sub">Активные сеансы</small></span>
+                    <span class="ge-group-action-chevron">›</span>
+                </button>
+                <button class="ge-group-action-btn" onclick="geEngine.privacy.close(); geEngine.privacy.openBlacklist()">
+                    <span class="ge-group-action-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="5.6" y1="5.6" x2="18.4" y2="18.4"/></svg></span>
+                    <span class="ge-group-action-text"><b>Чёрный список</b><small id="ge-privacy-blocked-sub">Никого нет</small></span>
+                    <span class="ge-group-action-chevron">›</span>
+                </button>
+            </div>
+            <button class="ge-group-cancel-btn" style="margin-top:16px;" onclick="geEngine.privacy.close()">Закрыть</button>
+        </div>
+    </div>
+
+    <div id="ge-modal-blacklist" class="ge-modal-overlay" onclick="if(event.target===this)geEngine.privacy.closeBlacklist()">
+        <div class="ge-modal-content ge-group-modal-sm" style="text-align:center; max-height:86vh; overflow-y:auto;">
+            <div class="ge-group-success-icon" style="color: var(--ge-error); background: rgba(255,64,80,0.12);"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="5.6" y1="5.6" x2="18.4" y2="18.4"/></svg></div>
+            <h2 class="ge-group-modal-title">Чёрный список</h2>
+            <p class="ge-group-modal-sub">Эти люди не могут писать вам, звонить и добавлять вас в контакты. Они не видят вашу аватарку и когда вы в сети. В группах их сообщения свёрнуты.</p>
+            <div id="ge-blacklist-body"></div>
+            <button class="ge-group-cancel-btn" style="margin-top:16px;" onclick="geEngine.privacy.closeBlacklist(); geEngine.privacy.open()">Назад</button>
+        </div>
+    </div>
+
     <div id="ge-modal-devices" class="ge-modal-overlay" onclick="if(event.target===this)geEngine.devices.close()">
         <div class="ge-modal-content ge-group-modal-sm" style="text-align:center; max-height:86vh; overflow-y:auto;">
             <div class="ge-group-success-icon">
@@ -2315,7 +2389,7 @@
             <h2 class="ge-group-modal-title">Устройства</h2>
             <p class="ge-group-modal-sub">Где сейчас открыт ваш аккаунт GeLink</p>
             <div id="ge-devices-body"><div style="padding:20px;opacity:.5;font-size:13px;">Загрузка…</div></div>
-            <button class="ge-btn-submit" style="margin-top:16px; background: var(--bg-input); color: var(--text-primary); box-shadow: none;" onclick="geEngine.devices.close()">ЗАКРЫТЬ</button>
+            <button class="ge-group-cancel-btn" style="margin-top:16px;" onclick="geEngine.devices.close(); geEngine.privacy.open()">Назад</button>
         </div>
     </div>
 
@@ -2378,7 +2452,8 @@
                     <span>Видео</span>
                 </button>
             </div>
-            <button class="ge-group-cancel-btn" style="margin-top:16px;" onclick="geEngine.ui.closeUserProfile()">Закрыть</button>
+            <button class="ge-user-block-btn" id="ge-user-profile-block-btn" onclick="geEngine.privacy.toggleFromProfile()">В чёрный список</button>
+            <button class="ge-group-cancel-btn" style="margin-top:10px;" onclick="geEngine.ui.closeUserProfile()">Закрыть</button>
         </div>
     </div>
 
@@ -2657,6 +2732,16 @@
 
             <div id="ge-pending-attachment" class="ge-hidden" style="display:flex; align-items:center; gap:10px; padding:10px 20px; background:var(--bg-panel); border-top:1px solid var(--border-base);"></div>
 
+            <div id="ge-ex-panel" class="ge-ex-panel">
+                <div class="ge-ex-tabs">
+                    <button class="ge-ex-tab active" id="ge-ex-tab-emoji" onclick="geEngine.ex.tab('emoji')">Эмодзи</button>
+                    <button class="ge-ex-tab" id="ge-ex-tab-gif" onclick="geEngine.ex.tab('gif')">GIF</button>
+                    <input class="ge-ex-search" id="ge-ex-search" placeholder="Поиск эмодзи" autocomplete="off" oninput="geEngine.ex.onSearch(this.value)">
+                </div>
+                <div class="ge-ex-cats" id="ge-ex-cats"></div>
+                <div class="ge-ex-body" id="ge-ex-body"></div>
+            </div>
+
             <footer class="ge-footer">
                 <div id="ge-composer-row" style="display:contents;">
                 <!-- Скрепка: прикрепить фото или файл -->
@@ -2668,14 +2753,14 @@
                 <div id="ge-attach-menu" class="ge-attach-menu">
                     <button class="ge-attach-menu-item" onclick="geEngine.media.pickGallery()">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                        <span>Галерея</span>
+                        <span>Фото, GIF, видео</span>
                     </button>
                     <button class="ge-attach-menu-item" onclick="geEngine.media.pickFile()">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
                         <span>Файл</span>
                     </button>
                 </div>
-                <input type="file" id="ge-attach-image-input" accept="image/*" class="ge-hidden" onchange="geEngine.media.handleImageAttach(this)">
+                <input type="file" id="ge-attach-image-input" accept="image/*,video/mp4,video/webm,video/quicktime" class="ge-hidden" onchange="geEngine.media.handleImageAttach(this)">
                 <input type="file" id="ge-attach-file-input" class="ge-hidden" onchange="geEngine.media.handleFileAttach(this)">
 
                 <!-- Кнопка записи: 1 клик = старт, 2 клик = стоп+отправить, ПКМ = смена режима -->
@@ -2690,6 +2775,7 @@
                     </span>
                 </button>
                 <input type="text" id="ge-main-input" class="ge-composer-input" placeholder="Напишите ваше сообщение здесь...">
+                <button class="ge-media-btn" id="ge-ex-btn" title="Эмодзи и GIF" onclick="geEngine.ex.toggle(event)"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg></button>
                 <button class="ge-send-btn" onclick="geEngine.chat.broadcast()">
                     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                         <line x1="22" y1="2" x2="11" y2="13"/>
@@ -3342,7 +3428,7 @@
                         geEngine.state.profilePending = { newName, newNick, newPass, newBio, avColor: this.tempColor, avImg: this.tempImg };
 
                         try {
-                            const data = await geEngine.auth._api('passwordCode', {});
+                            const data = await geEngine.auth._api('passwordCode', { password: newPass });
                             geEngine.state.profilePending.pwChallenge = data.challenge;
                             document.getElementById('prof-otp-hint').innerText = data.sentTo === 'app'
                                 ? 'Код отправлен в чат «GeLink».'
@@ -3489,6 +3575,7 @@
                     // Пока не знаем точно — звонки доступны, поправим ниже если аккаунт удалён
                     document.getElementById('ge-user-profile-call-btn')?.classList.remove('ge-hidden');
                     document.getElementById('ge-user-profile-video-btn')?.classList.remove('ge-hidden');
+                    geEngine.privacy._syncProfileBtn(email);
 
                     geEngine.ui._openModal('ge-modal-user-profile');
 
@@ -4122,7 +4209,7 @@
                             }
                         } else if (isBot) {
                             displayName = 'GeLink';
-                            subtitle = 'Официальный аккаунт • коды входа';
+                            subtitle = 'Официальный аккаунт GeLink';
                             avImg = GE_BOT_AVATAR;
                         } else if (rid !== 'general') {
                             // Реальная группа — показываем название с сервера, а не сырой ID
@@ -4171,6 +4258,9 @@
                                     <button class="ge-menu-btn" onclick="event.stopPropagation(); geEngine.chat.openClearChatModal(event, '${rid}')">
                                         Очистить чат
                                     </button>
+                                    ${(!isGroup && !isBot && resolvedTargetEmail) ? `<button class="ge-menu-btn ${geEngine.privacy.isBlocked(resolvedTargetEmail) ? '' : 'danger'}" onclick="event.stopPropagation(); document.querySelectorAll('.ge-context-menu.active').forEach(m => m.classList.remove('active')); ${geEngine.privacy.isBlocked(resolvedTargetEmail) ? `geEngine.privacy.unblock('${resolvedTargetEmail}')` : `geEngine.privacy.block('${resolvedTargetEmail}', '${displayName.replace(/'/g, "\\'")}')`}">
+                                        ${geEngine.privacy.isBlocked(resolvedTargetEmail) ? 'Убрать из чёрного списка' : 'В чёрный список'}
+                                    </button>` : ''}
                                     ${isBot ? '' : `<button class="ge-menu-btn" onclick="geEngine.chat.removeRoom(event, '${rid}')">
                                         ${isGroup ? 'Покинуть группу' : 'Удалить контакт'}
                                     </button>`}
@@ -4213,6 +4303,8 @@
                     }
                 },
                 renderMessages(messages) {
+                    geEngine.ui._lastRenderedMessages = messages;
+                    const hideBlocked = !!geEngine.state.activeRoom && !geEngine.state.activeRoom.startsWith('private-');
                     const container = document.getElementById('ge-msg-container');
                     if (!geEngine.state.activeRoom || geEngine.state.activeRoom === "") {
                         container.innerHTML = ""; return;
@@ -4225,7 +4317,7 @@
                             if (m.type === 'system') return !!m.text;
                             if (m.type === 'call') return true;
                             if (m.username === 'System') return false;
-                            if (['voice', 'circle', 'image', 'file'].includes(m.mediaType)) return true;
+                            if (['voice', 'circle', 'image', 'file', 'gif', 'video'].includes(m.mediaType)) return true;
                             return m.text && !m.text.includes('EmailJS');
                         } catch(e) { return false; }
                     });
@@ -4266,6 +4358,14 @@
                         // СИСТЕМНОЕ СООБЩЕНИЕ (вступление/выход из группы и т.п.)
                         if (m.type === 'system') {
                             return `<div class="ge-system-msg">${escapeHtml(m.text)}</div>`;
+                        }
+
+                        // СООБЩЕНИЕ ОТ ПОЛЬЗОВАТЕЛЯ ИЗ ЧЁРНОГО СПИСКА (в группах) — свёрнуто
+                        if (hideBlocked && !isMe && geEngine.privacy.isBlocked(m.email)) {
+                            const key = `${m.email}:${m.ts || ''}`;
+                            if (!geEngine.privacy._revealed.has(key)) {
+                                return `<div class="ge-blocked-msg" onclick="geEngine.privacy.reveal('${key.replace(/'/g, "\\'")}')">Сообщение от пользователя из чёрного списка<u>Показать</u></div>`;
+                            }
                         }
 
                         // СООБЩЕНИЕ ОФИЦИАЛЬНОГО БОТА GeLink (код входа подсвечиваем крупно)
@@ -4323,6 +4423,36 @@
                             return `<div class="ge-msg-bubble ${isMe ? 'me' : 'them'}" style="padding:6px;">
                                 <span class="ge-msg-meta-top" style="padding:6px 8px 0;">${metaTopHtml}</span>
                                 <img class="ge-msg-image" src="${mediaSrc}" onclick="window.open('${mediaSrc}', '_blank')" alt="Фото">
+                                ${m.text ? `<div class="ge-msg-text" style="padding:8px 8px 0;">${escapeHtml(m.text)}</div>` : ''}
+                                <div class="ge-msg-status-line" style="padding:4px 8px 2px;">
+                                    <span>${timeStr}</span>
+                                    ${isMe ? `<span>${statusIcon}</span>` : ''}
+                                </div>
+                            </div>`;
+                        }
+
+                        // GIF (из поиска GIPHY или свой файл) и видео
+                        if (m.mediaType === 'gif' || m.mediaType === 'video') {
+                            const src = geEngine.ex.safeMediaSrc(m.mediaData || (m.mediaKey ? localStorage.getItem(m.mediaKey) : null) || '');
+                            if (!src) return '';
+                            const isVideoSrc = src.startsWith('data:video/') || /\.mp4(\?|$)/.test(src);
+                            let media;
+                            if (m.mediaType === 'video') {
+                                media = `<video class="ge-msg-gif" src="${src}" controls playsinline preload="metadata"></video>`;
+                            } else {
+                                const fav = geEngine.ex.isFav(src);
+                                media = `<div class="ge-msg-gif-wrap">
+                                    ${isVideoSrc
+                                        ? `<video class="ge-msg-gif ge-gif-video" src="${src}" autoplay loop muted playsinline></video>`
+                                        : `<img class="ge-msg-gif" src="${src}" alt="GIF">`}
+                                    <span class="ge-gif-badge">GIF</span>
+                                    <button class="ge-gif-star ${fav ? 'on' : ''}" title="${fav ? 'Убрать из избранного' : 'В избранные GIF'}" onclick="event.stopPropagation(); geEngine.ex.toggleFavFromMsg(this)" data-src="${src.length < 4000 ? src : ''}" data-mkey="${src.length < 4000 ? '' : (m.mediaKey || '')}" data-uid="${uid}">${fav ? '★' : '☆'}</button>
+                                </div>`;
+                                if (src.length >= 4000) geEngine.ex._bigSrc[uid] = src;
+                            }
+                            return `<div class="ge-msg-bubble ${isMe ? 'me' : 'them'}" style="padding:6px;">
+                                <span class="ge-msg-meta-top" style="padding:6px 8px 0;">${metaTopHtml}</span>
+                                ${media}
                                 ${m.text ? `<div class="ge-msg-text" style="padding:8px 8px 0;">${escapeHtml(m.text)}</div>` : ''}
                                 <div class="ge-msg-status-line" style="padding:4px 8px 2px;">
                                     <span>${timeStr}</span>
@@ -4397,10 +4527,11 @@
                             </div>`;
                         }
 
-                        // ОБЫЧНОЕ СООБЩЕНИЕ
+                        // ОБЫЧНОЕ СООБЩЕНИЕ (1–3 эмодзи без текста показываем крупно, как в Telegram)
+                        const bigEmoji = geEngine.ex.isOnlyEmoji(m.text);
                         return `<div class="ge-msg-bubble ${isMe ? 'me' : 'them'}">
                                 <span class="ge-msg-meta-top">${metaTopHtml}</span>
-                                <div class="ge-msg-text">${escapeHtml(m.text)}</div>
+                                <div class="ge-msg-text${bigEmoji ? ' ge-big-emoji' : ''}">${escapeHtml(m.text)}</div>
                                 <div class="ge-msg-status-line">
                                     <span>${timeStr}</span>
                                     ${isMe ? `<span>${statusIcon}</span>` : ''}
@@ -4421,7 +4552,7 @@
                     const bubble = document.createElement('div');
                     bubble.className = 'ge-msg-bubble me';
                     const textDiv = document.createElement('div');
-                    textDiv.className = 'ge-msg-text';
+                    textDiv.className = 'ge-msg-text' + (geEngine.ex.isOnlyEmoji(m.text) ? ' ge-big-emoji' : '');
                     textDiv.textContent = m.text;
                     bubble.innerHTML = `<span class="ge-msg-meta-top">Вы</span>`;
                     bubble.appendChild(textDiv);
@@ -5074,6 +5205,10 @@
                                 // не даём обычной логике "контакт/не контакт" перезаписать её
                                 // обратно на "Отправить приглашение".
                                 geEngine.chat._applyDeletedAccountUI(composerRow, inviteBar, document.getElementById('ge-active-name'), document.getElementById('ge-active-av'), '');
+                            } else if (composerRow && inviteBar && geEngine.privacy.isBlocked(targetEmail)) {
+                                // В чёрном списке — плашка «Разблокировать» остаётся, композер скрыт
+                                composerRow.style.display = 'none';
+                                inviteBar.classList.remove('ge-hidden');
                             } else if (composerRow && inviteBar) {
                                 const isContact = geEngine.state.serverContacts.includes(targetEmail);
                                 composerRow.style.display = isContact ? 'contents' : 'none';
@@ -5183,7 +5318,7 @@
                                     // обратно к последнему сообщению на каждый тик опроса.
                                     const hasPlaying = document.querySelector('audio.ge-voice-audio:not([paused])') ||
                                         [...document.querySelectorAll('audio.ge-voice-audio')].some(a => !a.paused) ||
-                                        [...document.querySelectorAll('video')].some(v => !v.paused && v.id !== 'remoteVideo' && v.id !== 'localVideo');
+                                        [...document.querySelectorAll('video')].some(v => !v.paused && v.id !== 'remoteVideo' && v.id !== 'localVideo' && !v.classList.contains('ge-gif-video'));
                                     if (!hasPlaying && !geEngine.chat._isUserInteracting) {
                                         geEngine.chat._lastMessages = newMessages;
                                         geEngine.state.currentRoomReads = data.reads || {};
@@ -5209,7 +5344,7 @@
                         if (!geEngine.state.activeRoom) return;
                         input.value = '';
                         geEngine.media.clearPendingAttachment();
-                        const extra = pending.mediaType === 'image'
+                        const extra = ['image', 'gif', 'video'].includes(pending.mediaType)
                             ? { maxSize: 900 * 1024, caption: text }
                             : { maxSize: 900 * 1024, fileName: pending.fileName, fileSize: pending.fileSize, caption: text };
                         geEngine.media._sendMediaMessage(pending.blob, pending.mediaType, 0, extra);
@@ -5259,6 +5394,13 @@
                             // отклонил сообщение. Откатываем оптимистичный пузырёк и чистим у себя.
                             if (bubble && bubble.parentNode) bubble.parentNode.removeChild(bubble);
                             geEngine.groups._forgetDeletedGroup(targetRoom);
+                            return;
+                        }
+                        if (res.status === 403) {
+                            // Чёрный список (с любой стороны) — сообщение не доставлено
+                            const data = await res.json().catch(() => ({}));
+                            if (bubble && bubble.parentNode) bubble.parentNode.removeChild(bubble);
+                            alert(data.message || 'Сообщение не доставлено');
                             return;
                         }
                     } catch (e) {}
@@ -5346,6 +5488,7 @@
                 },
                 _openChatTargetEmail: null,
                 async open(id, prettyName, knownEmpty, explicitTargetEmail) {
+                    geEngine.ex.close();
                     geEngine.media.clearPendingAttachment(); // не тащим незаконченное вложение в другой чат
                     geEngine.state.activeRoom = id;
                     geEngine.chat._lastMessages = null; // сбрасываем кэш сравнения, чтобы фоновый refresh точно перерисовал актуальные данные
@@ -5418,6 +5561,19 @@
                         const applyNormalComposerState = async () => {
                             if (!composerRow || !inviteBar) return;
                             inviteBar.classList.remove('ge-bot-readonly-bar');
+                            if (targetEmail && geEngine.privacy.isBlocked(targetEmail)) {
+                                composerRow.style.display = 'none';
+                                inviteBar.classList.remove('ge-hidden');
+                                inviteBar.innerText = 'Пользователь в чёрном списке · Разблокировать';
+                                inviteBar.disabled = false;
+                                inviteBar.style.opacity = '1';
+                                inviteBar.onclick = () => geEngine.privacy.unblock(targetEmail);
+                                const ca = document.getElementById('ge-chat-actions');
+                                if (ca) ca.style.visibility = 'hidden';
+                                return;
+                            }
+                            const ca = document.getElementById('ge-chat-actions');
+                            if (ca) ca.style.visibility = '';
                             composerRow.style.display = isContact ? 'contents' : 'none';
                             inviteBar.classList.toggle('ge-hidden', isContact);
                             if (!isContact) {
@@ -6488,9 +6644,12 @@
                     if (plainText === undefined || plainText === null || plainText === '') return null;
                     const iv = crypto.getRandomValues(new Uint8Array(12));
                     const cipherBuf = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(String(plainText)));
+                    const bytes = new Uint8Array(cipherBuf);
+                    let bin = '';
+                    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
                     return {
                         iv: btoa(String.fromCharCode(...iv)),
-                        c: btoa(String.fromCharCode(...new Uint8Array(cipherBuf))),
+                        c: btoa(bin),
                     };
                 },
 
@@ -6721,6 +6880,17 @@
                     const file = input.files[0];
                     input.value = '';
                     if (!file || !geEngine.state.activeRoom) return;
+                    // GIF отправляем как есть (через canvas анимация потерялась бы), видео — тоже как есть
+                    if (file.type === 'image/gif' || file.type.startsWith('video/')) {
+                        const isGif = file.type === 'image/gif';
+                        if (file.size > 900 * 1024) {
+                            alert(`${isGif ? 'GIF' : 'Видео'} слишком большое (${(file.size / 1024 / 1024).toFixed(1)} МБ). Максимум 900 КБ.`);
+                            return;
+                        }
+                        const url = URL.createObjectURL(file);
+                        geEngine.media._setPendingAttachment({ blob: file, mediaType: isGif ? 'gif' : 'video', previewSrc: url, fileName: file.name });
+                        return;
+                    }
                     const reader = new FileReader();
                     reader.onload = (e) => {
                         const img = new Image();
@@ -6767,10 +6937,16 @@
                     const bar = document.getElementById('ge-pending-attachment');
                     if (!bar) return;
                     const removeBtn = `<button onclick="geEngine.media.clearPendingAttachment()" title="Убрать" style="background:none;border:none;cursor:pointer;color:var(--text-tertiary);width:22px;height:22px;flex-shrink:0;display:flex;align-items:center;justify-content:center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>`;
-                    if (att.mediaType === 'image') {
+                    if (att.mediaType === 'image' || att.mediaType === 'gif') {
                         bar.innerHTML = `
                             <img src="${att.previewSrc}" style="width:40px;height:40px;object-fit:cover;border-radius:8px;flex-shrink:0;">
-                            <span style="flex:1;font-size:13px;color:var(--text-secondary);">Фото готово — допишите текст и нажмите отправить</span>
+                            <span style="flex:1;font-size:13px;color:var(--text-secondary);">${att.mediaType === 'gif' ? 'GIF' : 'Фото'} готово — допишите текст и нажмите отправить</span>
+                            ${removeBtn}
+                        `;
+                    } else if (att.mediaType === 'video') {
+                        bar.innerHTML = `
+                            <video src="${att.previewSrc}" muted playsinline style="width:40px;height:40px;object-fit:cover;border-radius:8px;flex-shrink:0;"></video>
+                            <span style="flex:1;font-size:13px;color:var(--text-secondary);">Видео готово — допишите текст и нажмите отправить</span>
                             ${removeBtn}
                         `;
                     } else {
@@ -6930,7 +7106,7 @@
                     const pendingId = `ge-upload-pending-${Date.now()}`;
                     const container = document.getElementById('ge-msg-container');
                     if (container) {
-                        const label = mediaType === 'image' ? 'Отправка фото...' : mediaType === 'file' ? `Отправка файла${extra.fileName ? ' «' + extra.fileName + '»' : ''}...` : 'Отправка...';
+                        const label = mediaType === 'image' ? 'Отправка фото...' : mediaType === 'gif' ? 'Отправка GIF...' : mediaType === 'video' ? 'Отправка видео...' : mediaType === 'file' ? `Отправка файла${extra.fileName ? ' «' + extra.fileName + '»' : ''}...` : 'Отправка...';
                         const bubble = document.createElement('div');
                         bubble.id = pendingId;
                         bubble.className = 'ge-msg-bubble me';
@@ -6995,9 +7171,13 @@
                         geEngine.state.roomLastTime[geEngine.state.activeRoom] = mediaTs;
                         localStorage.setItem('ge_room_times', JSON.stringify(geEngine.state.roomLastTime));
                         try {
-                            await fetch(`/api/index?room=${geEngine.state.activeRoom}&user_email=${encodeURIComponent(geEngine.state.session.email)}`, {
+                            const res = await fetch(`/api/index?room=${encodeURIComponent(targetRoom)}&user_email=${encodeURIComponent(geEngine.state.session.email)}`, {
                                 method: 'POST', body: payload
                             });
+                            if (res.status === 403) {
+                                const data = await res.json().catch(() => ({}));
+                                alert(data.message || 'Сообщение не доставлено');
+                            }
                         } finally {
                             document.getElementById(pendingId)?.remove();
                         }
@@ -7054,6 +7234,382 @@
 
 
 
+
+            // ===== ЭМОДЗИ И GIF (как в Telegram) =====
+            ex: {
+                EMOJI: {"smileys": ["Смайлы", ["😀", "😃", "😄", "😁", "😆", "😅", "🤣", "😂", "🙂", "🙃", "🫠", "😉", "😊", "😇", "🥰", "😍", "🤩", "😘", "😗", "☺️", "😚", "😙", "🥲", "😋", "😛", "😜", "🤪", "😝", "🤑", "🤗", "🤭", "🫢", "🫣", "🤫", "🤔", "🫡", "🤐", "🤨", "😐", "😑", "😶", "🫥", "😏", "😒", "🙄", "😬", "😮‍💨", "🤥", "😌", "😔", "😪", "🤤", "😴", "😷", "🤒", "🤕", "🤢", "🤮", "🤧", "🥵", "🥶", "🥴", "😵", "😵‍💫", "🤯", "🤠", "🥳", "🥸", "😎", "🤓", "🧐", "😕", "🫤", "😟", "🙁", "☹️", "😮", "😯", "😲", "😳", "🥺", "🥹", "😦", "😧", "😨", "😰", "😥", "😢", "😭", "😱", "😖", "😣", "😞", "😓", "😩", "😫", "🥱", "😤", "😡", "😠", "🤬", "😈", "👿", "💀", "☠️", "💩", "🤡", "👹", "👺", "👻", "👽", "👾", "🤖", "😺", "😸", "😹", "😻", "😼", "😽", "🙀", "😿", "😾"]], "people": ["Люди и жесты", ["👋", "🤚", "🖐️", "✋", "🖖", "🫱", "🫲", "👌", "🤌", "🤏", "✌️", "🤞", "🫰", "🤟", "🤘", "🤙", "👈", "👉", "👆", "🖕", "👇", "☝️", "🫵", "👍", "👎", "✊", "👊", "🤛", "🤜", "👏", "🙌", "🫶", "👐", "🤲", "🤝", "🙏", "✍️", "💅", "🤳", "💪", "🦾", "🦵", "🦶", "👂", "👃", "🧠", "🫀", "👀", "👁️", "👅", "👄", "🫦", "👶", "🧒", "👦", "👧", "🧑", "👱", "👨", "🧔", "👩", "🧓", "👴", "👵", "🙍", "🙎", "🙅", "🙆", "💁", "🙋", "🧏", "🙇", "🤦", "🤷", "👮", "🕵️", "💂", "👷", "🤴", "👸", "👳", "🤵", "👰", "🤰", "🧑‍🍼", "👼", "🎅", "🤶", "🦸", "🦹", "🧙", "🧚", "🧛", "🧜", "🧝", "🧞", "🧟", "💆", "💇", "🚶", "🧍", "🧎", "🏃", "💃", "🕺", "👯", "🧖", "🧗", "🤺", "🏇", "⛷️", "🏂", "🏌️", "🏄", "🚣", "🏊", "⛹️", "🏋️", "🚴", "🤸", "🤼", "🤽", "🤾", "🤹", "🧘", "👫", "👭", "👬", "💏", "💑", "👪"]], "hearts": ["Сердца и символы", ["❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "🤍", "🤎", "🩷", "🩵", "🩶", "💔", "❤️‍🔥", "❤️‍🩹", "❣️", "💕", "💞", "💓", "💗", "💖", "💘", "💝", "💟", "💌", "💋", "💯", "💢", "💥", "💫", "💦", "💨", "🕳️", "💬", "👁️‍🗨️", "🗨️", "🗯️", "💭", "💤", "✨", "⭐", "🌟", "🔥", "⚡", "☀️", "🌈", "✅", "☑️", "✔️", "❌", "❎", "➕", "➖", "➗", "✖️", "♾️", "‼️", "⁉️", "❓", "❔", "❕", "❗", "〰️", "⚠️", "🚫", "⛔", "📛", "🔞", "♻️", "🔱", "⚜️", "🔰", "⭕", "🆗", "🆒", "🆕", "🆓", "🆙", "🆘", "🔝", "🔜", "🎵", "🎶", "➡️", "⬅️", "⬆️", "⬇️", "↩️", "↪️", "🔄", "🔃", "🔀", "🔁", "▶️", "⏸️", "⏹️", "⏺️", "⏭️", "⏮️", "⏩", "⏪", "🔴", "🟠", "🟡", "🟢", "🔵", "🟣", "⚫", "⚪", "🟤", "🟥", "🟧", "🟨", "🟩", "🟦", "🟪", "⬛", "⬜", "🔶", "🔷", "🔸", "🔹", "🔺", "🔻", "💠", "🔘", "🏁", "🚩", "🏳️", "🏴", "🏳️‍🌈"]], "animals": ["Животные и природа", ["🐶", "🐱", "🐭", "🐹", "🐰", "🦊", "🐻", "🐼", "🐻‍❄️", "🐨", "🐯", "🦁", "🐮", "🐷", "🐽", "🐸", "🐵", "🙈", "🙉", "🙊", "🐒", "🐔", "🐧", "🐦", "🐤", "🐣", "🐥", "🦆", "🦅", "🦉", "🦇", "🐺", "🐗", "🐴", "🦄", "🐝", "🪱", "🐛", "🦋", "🐌", "🐞", "🐜", "🪰", "🪲", "🪳", "🦟", "🦗", "🕷️", "🦂", "🐢", "🐍", "🦎", "🦖", "🦕", "🐙", "🦑", "🦐", "🦞", "🦀", "🐡", "🐠", "🐟", "🐬", "🐳", "🐋", "🦈", "🦭", "🐊", "🐅", "🐆", "🦓", "🦍", "🦧", "🦣", "🐘", "🦛", "🦏", "🐪", "🐫", "🦒", "🦘", "🦬", "🐃", "🐂", "🐄", "🐎", "🐖", "🐏", "🐑", "🦙", "🐐", "🦌", "🐕", "🐩", "🦮", "🐕‍🦺", "🐈", "🐈‍⬛", "🪶", "🐓", "🦃", "🦤", "🦚", "🦜", "🦢", "🦩", "🕊️", "🐇", "🦝", "🦨", "🦡", "🦫", "🦦", "🦥", "🐁", "🐀", "🐿️", "🦔", "🐾", "🐉", "🐲", "🌵", "🎄", "🌲", "🌳", "🌴", "🪵", "🌱", "🌿", "☘️", "🍀", "🎍", "🪴", "🎋", "🍃", "🍂", "🍁", "🍄", "🐚", "🪨", "🌾", "💐", "🌷", "🌹", "🥀", "🪷", "🌺", "🌸", "🌼", "🌻", "🌞", "🌝", "🌛", "🌜", "🌚", "🌕", "🌙", "🌎", "🪐", "💫", "⭐", "☄️", "🌪️", "🌤️", "⛅", "🌥️", "☁️", "🌦️", "🌧️", "⛈️", "🌩️", "🌨️", "❄️", "☃️", "⛄", "🌬️", "💧", "🌊", "🌫️"]], "food": ["Еда", ["🍏", "🍎", "🍐", "🍊", "🍋", "🍌", "🍉", "🍇", "🍓", "🫐", "🍈", "🍒", "🍑", "🥭", "🍍", "🥥", "🥝", "🍅", "🍆", "🥑", "🥦", "🥬", "🥒", "🌶️", "🫑", "🌽", "🥕", "🫒", "🧄", "🧅", "🥔", "🍠", "🥐", "🥯", "🍞", "🥖", "🥨", "🧀", "🥚", "🍳", "🧈", "🥞", "🧇", "🥓", "🥩", "🍗", "🍖", "🌭", "🍔", "🍟", "🍕", "🫓", "🥪", "🥙", "🧆", "🌮", "🌯", "🫔", "🥗", "🥘", "🫕", "🥫", "🍝", "🍜", "🍲", "🍛", "🍣", "🍱", "🥟", "🦪", "🍤", "🍙", "🍚", "🍘", "🍥", "🥠", "🥮", "🍢", "🍡", "🍧", "🍨", "🍦", "🥧", "🧁", "🍰", "🎂", "🍮", "🍭", "🍬", "🍫", "🍿", "🍩", "🍪", "🌰", "🥜", "🍯", "🥛", "🍼", "☕", "🍵", "🧃", "🥤", "🧋", "🍶", "🍺", "🍻", "🥂", "🍷", "🥃", "🍸", "🍹", "🧉", "🍾", "🧊", "🥄", "🍴", "🍽️", "🥣", "🥡", "🥢", "🧂"]], "activity": ["Активности", ["⚽", "🏀", "🏈", "⚾", "🥎", "🎾", "🏐", "🏉", "🥏", "🎱", "🪀", "🏓", "🏸", "🏒", "🏑", "🥍", "🏏", "🪃", "🥅", "⛳", "🪁", "🏹", "🎣", "🤿", "🥊", "🥋", "🎽", "🛹", "🛼", "🛷", "⛸️", "🥌", "🎿", "🏆", "🥇", "🥈", "🥉", "🏅", "🎖️", "🏵️", "🎗️", "🎫", "🎟️", "🎪", "🎭", "🩰", "🎨", "🎬", "🎤", "🎧", "🎼", "🎹", "🥁", "🪘", "🎷", "🎺", "🪗", "🎸", "🪕", "🎻", "🎲", "♟️", "🎯", "🎳", "🎮", "🕹️", "🎰", "🧩", "🎉", "🎊", "🎈", "🎁", "🎀", "🪅", "🪩", "🎃", "🎆", "🎇", "🧨"]], "travel": ["Путешествия", ["🚗", "🚕", "🚙", "🚌", "🚎", "🏎️", "🚓", "🚑", "🚒", "🚐", "🛻", "🚚", "🚛", "🚜", "🦯", "🦽", "🦼", "🛴", "🚲", "🛵", "🏍️", "🛺", "🚨", "🚔", "🚍", "🚘", "🚖", "🚡", "🚠", "🚟", "🚃", "🚋", "🚞", "🚝", "🚄", "🚅", "🚈", "🚂", "🚆", "🚇", "🚊", "🚉", "✈️", "🛫", "🛬", "🛩️", "💺", "🛰️", "🚀", "🛸", "🚁", "🛶", "⛵", "🚤", "🛥️", "🛳️", "⛴️", "🚢", "⚓", "🪝", "⛽", "🚧", "🚦", "🚥", "🚏", "🗺️", "🗿", "🗽", "🗼", "🏰", "🏯", "🏟️", "🎡", "🎢", "🎠", "⛲", "⛱️", "🏖️", "🏝️", "🏜️", "🌋", "⛰️", "🏔️", "🗻", "🏕️", "⛺", "🛖", "🏠", "🏡", "🏘️", "🏚️", "🏗️", "🏭", "🏢", "🏬", "🏣", "🏤", "🏥", "🏦", "🏨", "🏪", "🏫", "🏩", "💒", "🏛️", "⛪", "🕌", "🕍", "🛕", "🕋", "⛩️", "🌅", "🌄", "🌠", "🎇", "🎆", "🌇", "🌆", "🏙️", "🌃", "🌌", "🌉", "🌁"]], "objects": ["Предметы", ["⌚", "📱", "📲", "💻", "⌨️", "🖥️", "🖨️", "🖱️", "🕹️", "💽", "💾", "💿", "📀", "📼", "📷", "📸", "📹", "🎥", "📽️", "🎞️", "📞", "☎️", "📟", "📠", "📺", "📻", "🎙️", "⏱️", "⏲️", "⏰", "🕰️", "⌛", "⏳", "📡", "🔋", "🪫", "🔌", "💡", "🔦", "🕯️", "🧯", "🛢️", "💸", "💵", "💴", "💶", "💷", "🪙", "💰", "💳", "💎", "⚖️", "🪜", "🧰", "🪛", "🔧", "🔨", "⚒️", "🛠️", "⛏️", "🪚", "🔩", "⚙️", "🧱", "⛓️", "🧲", "🔫", "💣", "🧨", "🪓", "🔪", "🗡️", "⚔️", "🛡️", "🚬", "⚰️", "🔮", "📿", "🧿", "💈", "⚗️", "🔭", "🔬", "🩹", "🩺", "💊", "💉", "🩸", "🧬", "🦠", "🧫", "🧪", "🌡️", "🧹", "🧺", "🧻", "🚽", "🚰", "🚿", "🛁", "🧼", "🪥", "🪒", "🧽", "🧴", "🛎️", "🔑", "🗝️", "🚪", "🪑", "🛋️", "🛏️", "🧸", "🪆", "🖼️", "🪞", "🪟", "🛍️", "🛒", "🎁", "🎈", "🎏", "🎀", "🪄", "🪅", "🎊", "🎉", "🎎", "🏮", "🎐", "🧧", "✉️", "📩", "📨", "📧", "💌", "📥", "📤", "📦", "🏷️", "🪧", "📪", "📫", "📬", "📭", "📮", "📯", "📜", "📃", "📄", "📑", "🧾", "📊", "📈", "📉", "🗒️", "🗓️", "📆", "📅", "🗑️", "📇", "🗃️", "🗳️", "🗄️", "📋", "📁", "📂", "🗂️", "🗞️", "📰", "📓", "📔", "📒", "📕", "📗", "📘", "📙", "📚", "📖", "🔖", "🧷", "🔗", "📎", "🖇️", "📐", "📏", "🧮", "📌", "📍", "✂️", "🖊️", "🖋️", "✒️", "🖌️", "🖍️", "📝", "✏️", "🔍", "🔎", "🔏", "🔐", "🔒", "🔓"]], "flags": ["Флаги", ["🇧🇬", "🇺🇦", "🇷🇺", "🇧🇾", "🇰🇿", "🇺🇿", "🇬🇪", "🇦🇲", "🇦🇿", "🇲🇩", "🇵🇱", "🇩🇪", "🇫🇷", "🇬🇧", "🇮🇹", "🇪🇸", "🇵🇹", "🇳🇱", "🇧🇪", "🇨🇭", "🇦🇹", "🇨🇿", "🇸🇰", "🇭🇺", "🇷🇴", "🇷🇸", "🇬🇷", "🇹🇷", "🇸🇪", "🇳🇴", "🇫🇮", "🇩🇰", "🇪🇪", "🇱🇻", "🇱🇹", "🇮🇪", "🇺🇸", "🇨🇦", "🇲🇽", "🇧🇷", "🇦🇷", "🇯🇵", "🇰🇷", "🇨🇳", "🇮🇳", "🇮🇱", "🇦🇪", "🇸🇦", "🇪🇬", "🇦🇺", "🇳🇿", "🇿🇦", "🇪🇺", "🇺🇳"]]},
+                _tab: 'emoji',
+                _gifMode: 'favs',   // favs | trending | search
+                _gifQuery: '',
+                _gifItems: [],
+                _gifNext: null,
+                _gifNoKey: false,
+                _favs: [],          // [{id, src, w, h, ts}]
+                _favSrcIds: new Map(),
+                _bigSrc: {},
+                _searchTimer: null,
+
+                // Разрешаем показывать только GIF/видео из GIPHY и свои data:-файлы
+                safeMediaSrc(src) {
+                    src = String(src || '');
+                    if (/^data:(image\/gif|video\/(mp4|webm|quicktime));base64,[A-Za-z0-9+/=]+$/.test(src)) return src;
+                    if (/^https:\/\/media\d*\.giphy\.com\/[A-Za-z0-9._\/?=&%-]+$/.test(src)) return src;
+                    if (/^https:\/\/i\.giphy\.com\/[A-Za-z0-9._\/-]+$/.test(src)) return src;
+                    return '';
+                },
+                isOnlyEmoji(text) {
+                    const t = String(text || '').trim();
+                    if (!t || t.length > 24) return false;
+                    if (!/^(?:\p{Extended_Pictographic}|\p{Regional_Indicator}|\p{Emoji_Modifier}|‍|️|⃣|\s)+$/u.test(t)) return false;
+                    const n = [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(t.replace(/\s/g, ''))].length;
+                    return n >= 1 && n <= 3;
+                },
+
+                toggle(e) {
+                    e?.stopPropagation();
+                    const panel = document.getElementById('ge-ex-panel');
+                    const open = !panel.classList.contains('active');
+                    panel.classList.toggle('active', open);
+                    document.getElementById('ge-ex-btn').classList.toggle('active', open);
+                    if (open) { this.tab(this._tab); }
+                },
+                close() {
+                    document.getElementById('ge-ex-panel')?.classList.remove('active');
+                    document.getElementById('ge-ex-btn')?.classList.remove('active');
+                    document.querySelectorAll('#ge-ex-body video').forEach(v => v.pause());
+                },
+                tab(name) {
+                    this._tab = name;
+                    document.getElementById('ge-ex-tab-emoji').classList.toggle('active', name === 'emoji');
+                    document.getElementById('ge-ex-tab-gif').classList.toggle('active', name === 'gif');
+                    const search = document.getElementById('ge-ex-search');
+                    search.value = name === 'gif' ? this._gifQuery : '';
+                    search.placeholder = name === 'gif' ? 'Поиск GIF (GIPHY)' : 'Поиск эмодзи';
+                    if (name === 'emoji') this.renderEmoji();
+                    else {
+                        if (!this._favsLoaded) this.loadFavs().then(() => this._tab === 'gif' && this.renderGifs());
+                        if (this._gifMode === 'search' && !this._gifQuery) this._gifMode = 'favs';
+                        this.renderGifs();
+                    }
+                },
+                onSearch(v) {
+                    if (this._tab === 'emoji') return this.renderEmoji(v.trim());
+                    clearTimeout(this._searchTimer);
+                    this._searchTimer = setTimeout(() => {
+                        this._gifQuery = v.trim();
+                        if (this._gifQuery) this.loadGifs('search', true);
+                        else { this._gifMode = this._favs.length ? 'favs' : 'trending'; this._gifMode === 'trending' ? this.loadGifs('trending', true) : this.renderGifs(); }
+                    }, 400);
+                },
+
+                // ── Эмодзи ──
+                _recent() { try { return JSON.parse(localStorage.getItem('ge_recent_emoji') || '[]'); } catch { return []; } },
+                renderEmoji(filter) {
+                    const cats = document.getElementById('ge-ex-cats');
+                    const body = document.getElementById('ge-ex-body');
+                    const groups = [];
+                    const recent = this._recent();
+                    if (recent.length) groups.push(['recent', 'Недавние', recent]);
+                    for (const [k, [title, list]] of Object.entries(this.EMOJI)) groups.push([k, title, list]);
+                    cats.style.display = filter ? 'none' : '';
+                    cats.innerHTML = groups.map(([k, , list]) => `<button class="ge-ex-cat" title="" onclick="document.getElementById('ge-ex-sec-${k}').scrollIntoView({block:'start'})">${k === 'recent' ? '🕘' : list[0]}</button>`).join('');
+                    if (filter) {
+                        // Поиск: по названию раздела или по самим символам
+                        const f = filter.toLowerCase();
+                        const found = groups.filter(([k]) => k !== 'recent').filter(([, title]) => title.toLowerCase().includes(f)).flatMap(g => g[2]);
+                        const direct = groups.flatMap(g => g[2]).filter(e => e.includes(filter));
+                        const list = [...new Set([...direct, ...found])];
+                        body.innerHTML = list.length ? `<div class="ge-emoji-grid">${list.map(e => this._emojiBtn(e)).join('')}</div>` : '<div class="ge-ex-note">Ничего не найдено</div>';
+                        return;
+                    }
+                    body.innerHTML = groups.map(([k, title, list]) =>
+                        `<div class="ge-ex-cat-title" id="ge-ex-sec-${k}">${title}</div><div class="ge-emoji-grid">${list.map(e => this._emojiBtn(e)).join('')}</div>`).join('');
+                },
+                _emojiBtn(e) { return `<button class="ge-emoji" onclick="geEngine.ex.insertEmoji(this.textContent)">${e}</button>`; },
+                insertEmoji(e) {
+                    const input = document.getElementById('ge-main-input');
+                    if (!input) return;
+                    const a = input.selectionStart ?? input.value.length, b = input.selectionEnd ?? input.value.length;
+                    input.value = input.value.slice(0, a) + e + input.value.slice(b);
+                    const pos = a + e.length;
+                    try { input.setSelectionRange(pos, pos); } catch {}
+                    if (!matchMedia('(hover: none)').matches) input.focus();
+                    const recent = [e, ...this._recent().filter(x => x !== e)].slice(0, 24);
+                    try { localStorage.setItem('ge_recent_emoji', JSON.stringify(recent)); } catch {}
+                },
+
+                // ── GIF ──
+                async loadGifs(mode, reset) {
+                    this._gifMode = mode;
+                    if (reset) { this._gifItems = []; this._gifNext = 0; }
+                    if (this._gifNext === null) return;
+                    const body = document.getElementById('ge-ex-body');
+                    if (reset) body.innerHTML = '<div class="ge-ex-note">Загрузка…</div>';
+                    try {
+                        const q = mode === 'search' ? this._gifQuery : '';
+                        const res = await fetch(`/api/index?action=gifSearch&q=${encodeURIComponent(q)}&offset=${this._gifNext || 0}`);
+                        const data = await res.json();
+                        if (data.code === 'no_gif_key') { this._gifNoKey = true; this._gifItems = []; this._gifNext = null; }
+                        else if (data.status === 'ok') { this._gifItems.push(...data.gifs); this._gifNext = data.next; }
+                        else { body.innerHTML = `<div class="ge-ex-note">${escapeHtml(data.message || 'Не удалось загрузить GIF')}</div>`; return; }
+                    } catch { body.innerHTML = '<div class="ge-ex-note">Нет соединения</div>'; return; }
+                    if (this._tab === 'gif' && this._gifMode === mode) this.renderGifs();
+                },
+                renderGifs() {
+                    const cats = document.getElementById('ge-ex-cats');
+                    const body = document.getElementById('ge-ex-body');
+                    cats.style.display = '';
+                    const chip = (mode, label) => `<button class="ge-ex-tab ${this._gifMode === mode ? 'active' : ''}" style="padding:5px 12px;font-size:12px;flex-shrink:0" onclick="geEngine.ex._chip('${mode}')">${label}</button>`;
+                    cats.innerHTML = chip('favs', `★ Избранные${this._favs.length ? ' · ' + this._favs.length : ''}`) + chip('trending', 'Популярные')
+                        + (this._gifQuery ? chip('search', '🔍 ' + escapeHtml(this._gifQuery.slice(0, 20))) : '');
+                    let items, empty = '';
+                    if (this._gifMode === 'favs') {
+                        items = this._favs;
+                        empty = this._favsLoaded
+                            ? 'Здесь будут ваши GIF. Нажмите ☆ на любой GIF — в поиске или прямо в переписке (и на свои, которые вам прислали), — и он появится здесь на всех ваших устройствах.'
+                            : 'Загрузка…';
+                    } else {
+                        items = this._gifItems;
+                        empty = this._gifNoKey
+                            ? 'Поиск GIF ещё не включён на сервере (нужен ключ GIPHY). Избранные и свои GIF работают уже сейчас.'
+                            : (this._gifMode === 'search' ? 'Ничего не нашлось' : 'Загрузка…');
+                    }
+                    if (!items.length) { body.innerHTML = `<div class="ge-ex-note">${empty}</div>`; return; }
+                    body.innerHTML = `<div class="ge-gif-grid">${items.map((g, i) => {
+                        const src = this.safeMediaSrc(g.preview || g.src);
+                        if (!src) return '';
+                        const fav = this.isFav(g.src);
+                        const isVid = src.startsWith('data:video/') || /\.mp4(\?|$)/.test(src);
+                        const ratio = g.w && g.h ? `aspect-ratio:${g.w}/${g.h};` : '';
+                        return `<div class="ge-gif-cell" style="${ratio}" onclick="geEngine.ex.sendGif(${i})">
+                            ${isVid ? `<video class="ge-gif-video" src="${src}" autoplay loop muted playsinline></video>` : `<img src="${src}" loading="lazy">`}
+                            <button class="ge-gif-star ${fav ? 'on' : ''}" title="${fav ? 'Убрать из избранного' : 'В избранные'}" onclick="event.stopPropagation(); geEngine.ex.toggleFavFromPanel(${i})">${fav ? '★' : '☆'}</button>
+                        </div>`;
+                    }).join('')}</div>${this._gifMode !== 'favs' && this._gifNext ? `<button class="ge-ex-more" onclick="geEngine.ex.loadGifs('${this._gifMode}')">Ещё</button>` : ''}`;
+                },
+                _chip(mode) {
+                    if (mode === 'trending') { if (this._gifMode !== 'trending' || !this._gifItems.length) this.loadGifs('trending', true); else this.renderGifs(); }
+                    else if (mode === 'search') this.loadGifs('search', true);
+                    else { this._gifMode = 'favs'; this.renderGifs(); }
+                },
+                _currentList() { return this._gifMode === 'favs' ? this._favs : this._gifItems; },
+
+                async sendGif(i) {
+                    const g = this._currentList()[i];
+                    const room = geEngine.state.activeRoom;
+                    if (!g || !room) return;
+                    const src = this.safeMediaSrc(g.src);
+                    if (!src) return;
+                    if (room.startsWith('private-') && geEngine.chat._openChatTargetEmail && geEngine.privacy.isBlocked(geEngine.chat._openChatTargetEmail)) return;
+                    if (document.getElementById('ge-composer-row')?.style.display === 'none') return;
+                    this.close();
+                    const ts = Date.now();
+                    const msgObj = {
+                        username: geEngine.state.session.name, email: geEngine.state.session.email, text: '',
+                        mediaType: 'gif', mediaData: src, gifW: g.w || undefined, gifH: g.h || undefined,
+                        ts, time: new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), status: 'sent',
+                    };
+                    let wire = msgObj;
+                    if (room.startsWith('private-')) {
+                        const peer = geEngine.e2e._peerEmailForRoom(room);
+                        const key = peer && await geEngine.e2e.getSharedKeyForPeer(peer);
+                        if (key) {
+                            wire = { ...msgObj, e2e: true, mediaDataEnc: await geEngine.e2e.encryptField(key, src) };
+                            delete wire.mediaData; delete wire.text;
+                        }
+                    }
+                    if (!geEngine.state.roomLastTime) geEngine.state.roomLastTime = {};
+                    geEngine.state.roomLastTime[room] = ts;
+                    try { localStorage.setItem('ge_room_times', JSON.stringify(geEngine.state.roomLastTime)); } catch {}
+                    try {
+                        const res = await fetch(`/api/index?room=${encodeURIComponent(room)}&user_email=${encodeURIComponent(geEngine.state.session.email)}`, { method: 'POST', body: JSON.stringify(wire) });
+                        if (res.status === 403 || res.status === 410) {
+                            const data = await res.json().catch(() => ({}));
+                            alert(data.message || 'Сообщение не доставлено');
+                        }
+                    } catch { alert('Нет соединения — GIF не отправлен'); }
+                    geEngine.chat._lastMessages = null;
+                    geEngine.chat.refresh();
+                },
+
+                // ── Избранные GIF: хранятся на сервере, зашифрованы ключом самого пользователя ──
+                async _selfKey() {
+                    const me = geEngine.state.session?.email;
+                    return me ? await geEngine.e2e.getSharedKeyForPeer(me) : null;
+                },
+                async _hashId(src) {
+                    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(src));
+                    return [...new Uint8Array(buf)].slice(0, 16).map(b => b.toString(16).padStart(2, '0')).join('');
+                },
+                isFav(src) { return !!src && this._favSrcIds.has(src); },
+                async loadFavs() {
+                    try {
+                        const data = await (await fetch('/api/index?action=gifFavList')).json();
+                        if (data.status !== 'ok') return;
+                        const key = await this._selfKey();
+                        const list = [];
+                        for (const it of data.items) {
+                            try {
+                                const raw = key ? await geEngine.e2e.decryptField(key, JSON.parse(it.enc)) : null;
+                                const g = JSON.parse(raw);
+                                if (g && this.safeMediaSrc(g.src)) list.push({ ...g, id: it.id });
+                            } catch {}
+                        }
+                        list.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+                        this._favs = list;
+                        this._favSrcIds = new Map(list.map(g => [g.src, g.id]));
+                        this._favsLoaded = true;
+                    } catch {}
+                },
+                async setFav(g, on) {
+                    const src = this.safeMediaSrc(g.src);
+                    if (!src) return false;
+                    if (on) {
+                        const key = await this._selfKey();
+                        if (!key) { alert('Не удалось получить ключ шифрования — попробуйте перезайти в аккаунт.'); return false; }
+                        const id = await this._hashId(src);
+                        const item = { src, preview: g.preview && this.safeMediaSrc(g.preview) ? g.preview : src, w: g.w || 0, h: g.h || 0, ts: Date.now() };
+                        const enc = JSON.stringify(await geEngine.e2e.encryptField(key, JSON.stringify(item)));
+                        const res = await fetch('/api/index?action=gifFavAdd', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, enc }) });
+                        const data = await res.json().catch(() => ({}));
+                        if (data.status !== 'ok') { alert(data.message || 'Не удалось добавить в избранное'); return false; }
+                        this._favs = [{ ...item, id }, ...this._favs.filter(f => f.id !== id)];
+                        this._favSrcIds.set(src, id);
+                        geEngine.ui.showToast?.('Добавлено в избранные GIF', 'success');
+                    } else {
+                        const id = this._favSrcIds.get(src) || await this._hashId(src);
+                        await fetch('/api/index?action=gifFavRemove', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
+                        this._favs = this._favs.filter(f => f.id !== id);
+                        this._favSrcIds.delete(src);
+                    }
+                    return true;
+                },
+                async toggleFavFromPanel(i) {
+                    const g = this._currentList()[i];
+                    if (!g) return;
+                    if (await this.setFav(g, !this.isFav(g.src))) this.renderGifs();
+                },
+                async toggleFavFromMsg(btn) {
+                    if (!this._favsLoaded) await this.loadFavs();
+                    const src = btn.dataset.src || this._bigSrc[btn.dataset.uid] || (btn.dataset.mkey ? localStorage.getItem(btn.dataset.mkey) : '');
+                    if (!src) return;
+                    const media = btn.parentElement.querySelector('.ge-msg-gif');
+                    const g = { src, w: media?.videoWidth || media?.naturalWidth || 0, h: media?.videoHeight || media?.naturalHeight || 0 };
+                    const on = !this.isFav(src);
+                    if (await this.setFav(g, on)) {
+                        btn.classList.toggle('on', on);
+                        btn.textContent = on ? '★' : '☆';
+                        btn.title = on ? 'Убрать из избранного' : 'В избранные GIF';
+                    }
+                },
+            },
+
+            // ===== КОНФИДЕНЦИАЛЬНОСТЬ: чёрный список =====
+            privacy: {
+                blocked: new Set(),
+                _users: [],
+                _revealed: new Set(), // сообщения в группах, которые раскрыли кнопкой «Показать»
+                isBlocked(email) { return !!email && this.blocked.has(String(email).toLowerCase()); },
+                async load() {
+                    try {
+                        const data = await (await fetch('/api/index?action=blockedList')).json();
+                        if (data.status === 'ok') {
+                            this._users = data.users;
+                            this.blocked = new Set(data.users.map(u => u.email));
+                        }
+                    } catch {}
+                    this._updateSubs();
+                },
+                _updateSubs() {
+                    const n = this.blocked.size;
+                    const el = document.getElementById('ge-privacy-blocked-sub');
+                    if (el) el.innerText = n ? `${n} ${n % 10 === 1 && n % 100 !== 11 ? 'пользователь' : (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? 'пользователя' : 'пользователей')}` : 'Никого нет';
+                },
+                async open() {
+                    geEngine.ui.closeSettingsPopup();
+                    this._updateSubs();
+                    geEngine.ui._openModal('ge-modal-privacy-settings');
+                    try {
+                        const d = await (await fetch('/api/index?action=sessionsList')).json();
+                        const el = document.getElementById('ge-privacy-devices-sub');
+                        if (el && d.status === 'ok') el.innerText = d.sessions.length > 1 ? `Активных сеансов: ${d.sessions.length}` : 'Только это устройство';
+                    } catch {}
+                },
+                close() { geEngine.ui._closeModal('ge-modal-privacy-settings'); },
+                async openBlacklist() {
+                    geEngine.ui._openModal('ge-modal-blacklist');
+                    this._renderBlacklist();
+                    await this.load();
+                    this._renderBlacklist();
+                },
+                closeBlacklist() { geEngine.ui._closeModal('ge-modal-blacklist'); },
+                _renderBlacklist() {
+                    const body = document.getElementById('ge-blacklist-body');
+                    if (!body) return;
+                    if (!this._users.length) {
+                        body.innerHTML = '<div class="ge-bl-empty">Чёрный список пуст. Добавить человека можно в чате (⋮ → «В чёрный список») или в его профиле.</div>';
+                        return;
+                    }
+                    body.innerHTML = this._users.map(u => {
+                        const name = u.deleted ? 'Аккаунт удалён' : safeDecodeURIComponent(u.name);
+                        const img = u.avImg ? safeDecodeURIComponent(u.avImg) : null;
+                        const av = img
+                            ? `<div class="ge-dev-icon" style="background:none;overflow:hidden;"><img src="${img}" style="width:100%;height:100%;object-fit:cover;"></div>`
+                            : `<div class="ge-dev-icon" style="background:${u.avColor ? safeDecodeURIComponent(u.avColor) : 'var(--ge-accent-gradient)'};font-weight:700;">${escapeHtml((name[0] || '?').toUpperCase())}</div>`;
+                        return `<div class="ge-dev-item">${av}
+                            <div class="ge-dev-info"><div class="ge-dev-name">${escapeHtml(name)}</div>
+                            <div class="ge-dev-meta">${u.nickname ? '@' + escapeHtml(u.nickname) : escapeHtml(u.email)}</div></div>
+                            <button class="ge-dev-end" style="color:var(--ge-primary)" onclick="geEngine.privacy.unblock('${u.email.replace(/'/g, "\\'")}', true)">Разблокировать</button>
+                        </div>`;
+                    }).join('');
+                },
+                async block(email, name) {
+                    if (!email) return;
+                    if (!confirm(`Добавить ${name || email} в чёрный список?\n\nОн не сможет писать вам, звонить и добавлять вас в контакты, не увидит вашу аватарку и когда вы в сети. В группах его сообщения будут свёрнуты.`)) return false;
+                    const res = await fetch('/api/index?action=blockUser', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target: email }) });
+                    const data = await res.json().catch(() => ({}));
+                    if (data.status !== 'ok') { alert(data.message || 'Не удалось'); return false; }
+                    this.blocked.add(String(email).toLowerCase());
+                    await this.load();
+                    this._afterChange();
+                    return true;
+                },
+                async unblock(email, fromList) {
+                    if (!fromList && !confirm('Убрать пользователя из чёрного списка?')) return false;
+                    await fetch('/api/index?action=unblockUser', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target: email }) });
+                    this.blocked.delete(String(email).toLowerCase());
+                    await this.load();
+                    this._renderBlacklist();
+                    this._afterChange();
+                    return true;
+                },
+                // Перерисовать открытый чат (плашка в личке, свёрнутые сообщения в группе)
+                _afterChange() {
+                    const rid = geEngine.state.activeRoom;
+                    if (rid) {
+                        const name = document.getElementById('ge-active-name')?.innerText;
+                        geEngine.chat.open(rid, name, false, geEngine.chat._openChatTargetEmail || undefined);
+                    }
+                    geEngine.chat.refresh?.();
+                },
+                _syncProfileBtn(email) {
+                    const btn = document.getElementById('ge-user-profile-block-btn');
+                    if (!btn) return;
+                    const b = this.isBlocked(email);
+                    btn.innerText = b ? 'Убрать из чёрного списка' : 'В чёрный список';
+                    btn.classList.toggle('is-blocked', b);
+                },
+                async toggleFromProfile() {
+                    const t = geEngine.ui._userProfileTarget;
+                    if (!t || !t.email) return;
+                    const done = this.isBlocked(t.email) ? await this.unblock(t.email) : await this.block(t.email, t.name);
+                    if (done) this._syncProfileBtn(t.email);
+                },
+                reveal(key) {
+                    this._revealed.add(key);
+                    if (geEngine.ui._lastRenderedMessages) geEngine.ui.renderMessages(geEngine.ui._lastRenderedMessages);
+                },
+            },
 
             // ===== УСТРОЙСТВА (активные сеансы) =====
             devices: {
@@ -7230,6 +7786,8 @@
 
             init(passwordForE2E) {
                 document.getElementById('ge-auth-layer').classList.add('ge-hidden');
+                geEngine.privacy.load();
+                geEngine.ex.loadFavs();
                 document.getElementById('ge-main-app').classList.add('ge-flex');
                 const session = geEngine.state.session;
                 document.getElementById('ge-my-name').innerText = session.name;
@@ -7396,9 +7954,9 @@
             <span class="ge-popup-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/><line x1="19.07" y1="4.93" x2="4.93" y2="19.07"/><line x1="12" y1="2" x2="9" y2="5"/><line x1="12" y1="2" x2="15" y2="5"/><line x1="12" y1="22" x2="9" y2="19"/><line x1="12" y1="22" x2="15" y2="19"/><line x1="2" y1="12" x2="5" y2="9"/><line x1="2" y1="12" x2="5" y2="15"/><line x1="22" y1="12" x2="19" y2="9"/><line x1="22" y1="12" x2="19" y2="15"/></svg></span>
             <span class="ge-popup-label" id="btn-snow-label">Снег: Выкл</span>
         </button>
-        <button class="ge-popup-item" onclick="geEngine.devices.open()">
-            <span class="ge-popup-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="14" height="10" rx="2"/><path d="M6 18h6"/><rect x="17" y="8" width="5" height="12" rx="1.2"/></svg></span>
-            <span class="ge-popup-label">Устройства</span>
+        <button class="ge-popup-item" onclick="geEngine.privacy.open()">
+            <span class="ge-popup-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span>
+            <span class="ge-popup-label">Конфиденциальность</span>
         </button>
         <button class="ge-popup-item" onclick="geEngine.profile.open()">
             <span class="ge-popup-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
