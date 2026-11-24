@@ -311,6 +311,16 @@
             cursor: default; font-weight: 500; text-transform: none; letter-spacing: 0; }
         .ge-bot-readonly { width: 100%; padding: 14px; text-align: center; font-size: 13px; color: var(--text-secondary); }
 
+        .ge-ap-label { text-align: left; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .4px; color: var(--text-tertiary); margin: 6px 2px 8px; }
+        .ge-ap-seg { display: flex; gap: 4px; padding: 4px; border-radius: 14px; background: var(--bg-input); }
+        .ge-ap-seg button { flex: 1; border: none; border-radius: 10px; padding: 10px 4px; font-size: 13px; font-weight: 700; color: var(--text-secondary); background: transparent; cursor: pointer; }
+        .ge-ap-seg button.active { background: var(--bg-panel, #fff); color: var(--ge-primary); box-shadow: 0 1px 4px rgba(0,0,0,.12); }
+        .ge-ap-hint { font-size: 12px; color: var(--text-secondary); margin-top: 8px; min-height: 16px; }
+        .ge-switch { position: relative; width: 44px; height: 26px; border-radius: 13px; background: var(--border-base); flex-shrink: 0; transition: background .2s; }
+        .ge-switch::after { content: ''; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.25); transition: transform .2s; }
+        .ge-switch.on { background: var(--ge-primary); }
+        .ge-switch.on::after { transform: translateX(18px); }
+        @media (max-width: 768px) { #ge-ap-snow-row { display: none !important; } }
         .ge-user-block-btn { width: 100%; margin-top: 14px; border: none; border-radius: 12px; padding: 12px; font-size: 14px; font-weight: 600;
             cursor: pointer; background: rgba(255,64,80,.1); color: var(--ge-error); }
         .ge-user-block-btn.is-blocked { background: var(--bg-input); color: var(--text-primary); }
@@ -1175,6 +1185,13 @@
             color: var(--text-primary);
             border: 2px solid transparent;
         }
+
+        /* Поле ввода — многострочное (textarea): на телефоне у клавиатуры появляется кнопка эмодзи,
+           как в обычных мессенджерах; длинное сообщение растёт вверх до ~6 строк */
+        textarea.ge-composer-input { resize: none; line-height: 1.4; max-height: 160px; overflow-y: auto; display: block;
+            border-radius: 26px; scrollbar-width: none; }
+        textarea.ge-composer-input::-webkit-scrollbar { display: none; }
+        .ge-msg-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 
         .ge-composer-input:focus {
             background: var(--bg-header);
@@ -2137,26 +2154,6 @@
                     <textarea id="prof-bio" class="ge-input-core" maxlength="150" rows="3" placeholder="Пара слов о себе…" style="resize:none; font-family:inherit;" oninput="geEngine.profile.updateBioCounter(this)"></textarea>
                     <div style="text-align:right; font-size:11px; color:var(--text-tertiary); margin-top:4px;"><span id="prof-bio-counter">0</span>/150</div>
                 </div>
-                <div class="ge-field">
-                    <label class="ge-label">Новый пароль (оставьте пустым, если не меняете)</label>
-                    <div style="position:relative;">
-                        <input type="password" id="prof-pass" class="ge-input-core" placeholder="••••••••" style="padding-right:44px;" oninput="geEngine.auth.filterLatinPass(this)">
-                        <button type="button" class="ge-eye-btn" onclick="geEngine.auth.toggleEye('prof-pass', this)" tabindex="-1">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                        </button>
-                    </div>
-                </div>
-
-                <!-- OTP подтверждение смены пароля -->
-                <div id="prof-otp-section" class="ge-hidden" style="animation: ge-slide-up 0.3s ease; margin-top:10px;">
-                    <p id="prof-otp-hint" style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;">Код подтверждения отправлен на вашу почту.</p>
-                    <div class="ge-field">
-                        <label class="ge-label" style="color:var(--ge-primary)">Введите код</label>
-                        <input type="text" id="prof-otp" class="ge-input-core" placeholder="000000" maxlength="6" inputmode="numeric" pattern="[0-9]*" oninput="this.value = this.value.replace(/[^0-9]/g, '')" style="text-align:center;font-size:22px;letter-spacing:5px;">
-                    </div>
-                    <button class="ge-btn-submit" onclick="geEngine.profile.confirmPassOTP()">ПОДТВЕРДИТЬ И СОХРАНИТЬ</button>
-                </div>
-
                 <div id="prof-save-btns" style="display: flex; gap: 15px; margin-top:4px;">
                     <button class="ge-btn-submit" style="background: var(--bg-input); color: var(--text-primary); box-shadow: none;" onclick="geEngine.profile.close()">ОТМЕНА</button>
                     <button class="ge-btn-submit" onclick="geEngine.profile.save()">СОХРАНИТЬ</button>
@@ -2366,6 +2363,11 @@
                     <span class="ge-group-action-text"><b>Чёрный список</b><small id="ge-privacy-blocked-sub">Никого нет</small></span>
                     <span class="ge-group-action-chevron">›</span>
                 </button>
+                <button class="ge-group-action-btn" onclick="geEngine.privacy.close(); geEngine.password.open()">
+                    <span class="ge-group-action-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></span>
+                    <span class="ge-group-action-text"><b>Пароль</b><small>Сменить пароль от аккаунта</small></span>
+                    <span class="ge-group-action-chevron">›</span>
+                </button>
                 <button class="ge-group-action-btn ge-hidden" id="ge-minva-popup-item" onclick="geEngine.privacy.close(); geEngine.minva.openSettings()">
                     <span class="ge-group-action-icon"><span class="ge-minva-mark" style="width:22px;height:22px;border-radius:6px;font-size:12px;"><span class="ge-minva-letter">M</span></span></span>
                     <span class="ge-group-action-text"><b>Вход через Minva</b><small id="ge-privacy-minva-sub">Привязка аккаунта Minva</small></span>
@@ -2373,6 +2375,65 @@
                 </button>
             </div>
             <button class="ge-group-cancel-btn" style="margin-top:16px;" onclick="geEngine.privacy.close()">Закрыть</button>
+        </div>
+    </div>
+
+    <div id="ge-modal-appearance" class="ge-modal-overlay" onclick="if(event.target===this)geEngine.appearance.close()">
+        <div class="ge-modal-content ge-group-modal-sm" style="text-align:center;">
+            <div class="ge-group-success-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22a10 10 0 1 1 10-10c0 2.8-2.2 4-4.5 4H16a2 2 0 0 0-1.5 3.3A1.6 1.6 0 0 1 12 22z"/><circle cx="7.5" cy="10.5" r="1.2"/><circle cx="12" cy="7.5" r="1.2"/><circle cx="16.5" cy="10.5" r="1.2"/></svg></div>
+            <h2 class="ge-group-modal-title">Оформление</h2>
+            <p class="ge-group-modal-sub">Тема и эффекты — сохраняются на этом устройстве</p>
+            <div class="ge-ap-label">Тема</div>
+            <div class="ge-ap-seg" id="ge-ap-theme">
+                <button data-mode="light" onclick="geEngine.appearance.setTheme('light')">☀️ Светлая</button>
+                <button data-mode="dark" onclick="geEngine.appearance.setTheme('dark')">🌙 Тёмная</button>
+                <button data-mode="auto" onclick="geEngine.appearance.setTheme('auto')">🕖 Авто</button>
+            </div>
+            <div class="ge-ap-hint" id="ge-ap-auto-hint">Авто: светлая с 7:00 до 20:00, ночью тёмная</div>
+            <div class="ge-group-action-list" style="margin-top:14px;">
+                <button class="ge-group-action-btn" onclick="geEngine.appearance.toggleGlass()">
+                    <span class="ge-group-action-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></span>
+                    <span class="ge-group-action-text"><b>Жидкое стекло</b><small>Полупрозрачные панели с размытием</small></span>
+                    <span class="ge-switch" id="ge-ap-glass"></span>
+                </button>
+                <button class="ge-group-action-btn" id="ge-ap-snow-row" onclick="geEngine.appearance.toggleSnow()">
+                    <span class="ge-group-action-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/><line x1="19.07" y1="4.93" x2="4.93" y2="19.07"/></svg></span>
+                    <span class="ge-group-action-text"><b>Снег</b><small>Падающие снежинки (только на компьютере)</small></span>
+                    <span class="ge-switch" id="ge-ap-snow"></span>
+                </button>
+            </div>
+            <button class="ge-group-cancel-btn" style="margin-top:16px;" onclick="geEngine.appearance.close()">Готово</button>
+        </div>
+    </div>
+
+    <div id="ge-modal-password" class="ge-modal-overlay" onclick="if(event.target===this)geEngine.password.close()">
+        <div class="ge-modal-content ge-group-modal-sm" style="text-align:left;">
+            <div class="ge-group-success-icon" style="margin-left:auto;margin-right:auto;"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></div>
+            <h2 class="ge-group-modal-title" style="text-align:center;">Пароль</h2>
+            <p class="ge-group-modal-sub" style="text-align:center;">Не короче 8 символов: латинские буквы, цифры и спецсимволы. После смены придёт код подтверждения.</p>
+            <div id="pw-fields">
+                <div class="ge-field">
+                    <label class="ge-label">Новый пароль</label>
+                    <div style="position:relative;">
+                        <input type="password" id="pw-new" class="ge-input-core" placeholder="••••••••" autocomplete="new-password" style="padding-right:44px;" oninput="geEngine.auth.filterLatinPass(this)">
+                        <button type="button" class="ge-eye-btn" onclick="geEngine.auth.toggleEye('pw-new', this)" tabindex="-1"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+                    </div>
+                </div>
+                <div class="ge-field">
+                    <label class="ge-label">Повторите пароль</label>
+                    <input type="password" id="pw-new2" class="ge-input-core" placeholder="••••••••" autocomplete="new-password" oninput="geEngine.auth.filterLatinPass(this)" onkeydown="if(event.key==='Enter')geEngine.password.sendCode()">
+                </div>
+                <button class="ge-btn-submit" id="pw-send-btn" onclick="geEngine.password.sendCode()">ПОЛУЧИТЬ КОД</button>
+            </div>
+            <div id="pw-otp-section" class="ge-hidden">
+                <p class="ge-otp-hint" id="pw-otp-hint"></p>
+                <div class="ge-field">
+                    <label class="ge-label" style="color:var(--ge-primary)">Код подтверждения</label>
+                    <input type="text" id="pw-otp" class="ge-input-core" placeholder="000000" maxlength="6" inputmode="numeric" pattern="[0-9]*" oninput="this.value = this.value.replace(/[^0-9]/g, '')" onkeydown="if(event.key==='Enter')geEngine.password.confirm()" style="text-align:center;font-size:22px;letter-spacing:5px;">
+                </div>
+                <button class="ge-btn-submit" onclick="geEngine.password.confirm()">СМЕНИТЬ ПАРОЛЬ</button>
+            </div>
+            <button class="ge-group-cancel-btn" style="margin-top:12px;width:100%;" onclick="geEngine.password.close(); geEngine.privacy.open()">Назад</button>
         </div>
     </div>
 
@@ -2531,7 +2592,7 @@
                         <input type="text" id="in-otp" class="ge-input-core" placeholder="000000" maxlength="6" inputmode="numeric" pattern="[0-9]*" oninput="this.value = this.value.replace(/[^0-9]/g, '')" style="text-align:center; font-size:24px; letter-spacing:5px;">
                     </div>
                     <button class="ge-btn-submit" onclick="geEngine.auth.verifyOTP('login')">ПОДТВЕРДИТЬ ВХОД</button>
-                    <button type="button" class="ge-otp-link" id="in-otp-email-btn" onclick="geEngine.auth.resendCode('login', 'email')">Отправить код на почту</button>
+                    <button type="button" class="ge-otp-link" id="in-otp-email-btn" onclick="geEngine.auth.resendCode('login')">Отправить код ещё раз</button>
                 </div>
 
                 <!-- ЗАБЫЛИ ПАРОЛЬ -->
@@ -2779,7 +2840,7 @@
                         </svg>
                     </span>
                 </button>
-                <input type="text" id="ge-main-input" class="ge-composer-input" placeholder="Напишите ваше сообщение здесь...">
+                <textarea id="ge-main-input" class="ge-composer-input" rows="1" placeholder="Напишите ваше сообщение здесь..." autocapitalize="sentences" spellcheck="true"></textarea>
                 <button class="ge-media-btn" id="ge-ex-btn" title="Эмодзи и GIF" onclick="geEngine.ex.toggle(event)"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg></button>
                 <button class="ge-send-btn" onclick="geEngine.chat.broadcast()">
                     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -2915,6 +2976,22 @@
                 .replace(/"/g, '&quot;')
                 .replace(/'/g, '&#39;');
         }
+        // Строка для подстановки в onclick="…(${jsq(x)})…": готовый JS-литерал, безопасный внутри атрибута.
+        // Раньше имя вставлялось как ${jsq(name)}, и кавычка " в имени ломала атрибут.
+        function jsq(v) { return escapeHtml(JSON.stringify(String(v ?? ''))); }
+        // Медиа из сообщений и аватарки: только data:-картинки/аудио/видео нужного вида
+        function geSafeData(src, kind) {
+            src = String(src || '');
+            if (!/^data:[a-z0-9.+\/-]+(;[a-z0-9=.+,-]+)*?;base64,[A-Za-z0-9+/=]+$/i.test(src)) return '';
+            if (kind === 'image' && !/^data:image\/(png|jpe?g|gif|webp|bmp)[;,]/i.test(src)) return '';
+            if (kind === 'audio' && !/^data:(audio|video)\/[a-z0-9.+-]+[;,]/i.test(src)) return '';
+            if (kind === 'video' && !/^data:video\/[a-z0-9.+-]+[;,]/i.test(src)) return '';
+            return src;
+        }
+        function geSafeColor(c) {
+            c = String(c || '');
+            return /^(#[0-9a-f]{3,8}|var\(--ge-accent-gradient\)|linear-gradient\(\d{1,3}deg(, ?#[0-9a-f]{3,8}( \d{1,3}%)?){2,4}\))$/i.test(c) ? c : 'var(--ge-accent-gradient)';
+        }
 
         // Единая иконка "аккаунт удалён" — используется везде: в списке чатов, в шапке
         // открытого чата, в мини-профиле и рядом с именем отправителя в сообщениях.
@@ -3013,17 +3090,14 @@
                     const label = document.getElementById('in-otp-label');
                     const hint = document.getElementById('in-otp-hint');
                     const emailBtn = document.getElementById('in-otp-email-btn');
-                    if (info.sentTo === 'app') {
-                        label.innerText = 'Код отправлен в GeLink';
-                        hint.innerText = 'Откройте GeLink на другом устройстве, где вы уже вошли: код пришёл в чат «GeLink» с галочкой.';
-                        emailBtn.hidden = !info.canEmail;
-                        emailBtn.innerText = 'Нет доступа к устройству? Отправить код на почту';
-                    } else {
-                        label.innerText = 'Код отправлен на почту';
-                        hint.innerText = info.email ? `Мы отправили код на ${info.email}.` : '';
-                        emailBtn.hidden = false;
-                        emailBtn.innerText = 'Отправить код ещё раз';
-                    }
+                    // Код всегда уходит на почту и, если вы уже вошли где-то ещё, в чат «GeLink» там
+                    label.innerText = 'Код подтверждения';
+                    hint.innerText = info.email && info.app
+                        ? `Мы отправили код на ${info.email} и в чат «GeLink» на устройстве, где вы уже вошли.`
+                        : info.email ? `Мы отправили код на ${info.email}.`
+                        : 'Код пришёл в чат «GeLink» на устройстве, где вы уже вошли.';
+                    emailBtn.hidden = false;
+                    emailBtn.innerText = 'Отправить код ещё раз';
                 },
 
                 async resendCode(type, channel) {
@@ -3036,9 +3110,10 @@
                             await this._api('registerResend', { challenge: ch.id });
                             alert('Новый код отправлен на почту.');
                         } else {
-                            const data = await this._api('loginResend', { challenge: ch.id, channel: channel || 'email' });
-                            Object.assign(ch, { sentTo: data.sentTo, email: data.email || ch.email });
+                            const data = await this._api('loginResend', { challenge: ch.id });
+                            Object.assign(ch, { app: data.app, email: data.email || ch.email });
                             this._showLoginCodeState(ch);
+                            alert('Новый код отправлен.');
                         }
                     } catch (err) { alert(err.message); }
                     finally { if (btn) setTimeout(() => { btn.disabled = false; }, 60000); }
@@ -3086,7 +3161,7 @@
                         // устройствах (если вы уже где-то вошли) или на почту.
                         try {
                             const data = await this._api('login', { email: e, password: p });
-                            geEngine.state.authChallenge = { type: 'login', id: data.challenge, sentTo: data.sentTo, canEmail: data.canEmail, email: data.email };
+                            geEngine.state.authChallenge = { type: 'login', id: data.challenge, app: data.app, email: data.email };
                         } catch (err) { return alert(err.message); }
                         this._showLoginCodeState(geEngine.state.authChallenge);
                         document.getElementById('login-fields-main').classList.add('ge-hidden');
@@ -3339,7 +3414,6 @@
                     const session = geEngine.state.session;
                     document.getElementById('prof-name').value = session.name;
                     document.getElementById('prof-nick').value = session.nickname || '';
-                    document.getElementById('prof-pass').value = '';
                     document.getElementById('prof-bio').value = session.bio || '';
                     document.getElementById('prof-bio-counter').innerText = (session.bio || '').length;
                     this.tempColor = session.avColor || 'var(--ge-accent-gradient)';
@@ -3352,11 +3426,6 @@
                 },
                 close() {
                     document.getElementById('ge-modal-profile').style.display = 'none';
-                    document.getElementById('prof-otp-section').classList.add('ge-hidden');
-                    document.getElementById('prof-save-btns').classList.remove('ge-hidden');
-                    document.getElementById('prof-otp').value = '';
-                    document.getElementById('prof-pass').value = '';
-                    geEngine.state.profilePending = null;
                     // Сбрасываем file input
                     const fi = document.getElementById('ge-av-file-input');
                     if (fi) fi.value = '';
@@ -3417,7 +3486,6 @@
                 async save() {
                     const newName = document.getElementById('prof-name').value.trim();
                     const newNick = document.getElementById('prof-nick').value.trim().toLowerCase();
-                    const newPass = document.getElementById('prof-pass').value.trim();
                     const newBio = document.getElementById('prof-bio').value.trim().slice(0, 150);
                     const email = geEngine.state.session.email;
 
@@ -3426,37 +3494,7 @@
                     const nickRegex = /^[a-zA-Z0-9_]{3,20}$/;
                     if (!nickRegex.test(newNick)) return alert("Никнейм должен быть от 3 до 20 символов (латиница, цифры, подчёркивание)");
 
-                    if (newPass) {
-                        if (newPass.length < 8) return alert("Пароль слишком короткий!");
-                        if (/[^a-zA-Z0-9!@#$%^&*()_+\-=\[\]{}|;':",.<>?/`~\\]/.test(newPass)) return alert("Пароль: только латинские буквы, цифры и спецсимволы. Пробелы запрещены!");
-
-                        geEngine.state.profilePending = { newName, newNick, newPass, newBio, avColor: this.tempColor, avImg: this.tempImg };
-
-                        try {
-                            const data = await geEngine.auth._api('passwordCode', { password: newPass });
-                            geEngine.state.profilePending.pwChallenge = data.challenge;
-                            document.getElementById('prof-otp-hint').innerText = data.sentTo === 'app'
-                                ? 'Код отправлен в чат «GeLink».'
-                                : `Код подтверждения отправлен на ${data.email}.`;
-                        } catch (err) { return alert(err.message); }
-                        document.getElementById('prof-save-btns').classList.add('ge-hidden');
-                        document.getElementById('prof-otp-section').classList.remove('ge-hidden');
-                        return;
-                    }
-
                     await geEngine.profile._doSave({ newName, newNick, newBio, avColor: this.tempColor, avImg: this.tempImg });
-                },
-                async confirmPassOTP() {
-                    const entered = document.getElementById('prof-otp').value.trim();
-                    if (!entered) return alert('Введите код!');
-                    const p = geEngine.state.profilePending;
-                    const ok = await geEngine.profile._doSave({ newName: p.newName, newNick: p.newNick, newBio: p.newBio, avColor: p.avColor, avImg: p.avImg, newPass: p.newPass, pwChallenge: p.pwChallenge, pwCode: entered });
-                    if (ok === false) return; // неверный код — даём ввести ещё раз
-                    geEngine.state.profilePending = null;
-
-                    document.getElementById('prof-otp-section').classList.add('ge-hidden');
-                    document.getElementById('prof-save-btns').classList.remove('ge-hidden');
-                    document.getElementById('prof-otp').value = '';
                 },
                 async _doSave({ newName, newNick, newBio, avColor, avImg, newPass, pwChallenge, pwCode }) {
                     const email = geEngine.state.session.email;
@@ -3720,7 +3758,7 @@
                     if (chatMatches.length) {
                         html += `<div class="ge-search-section-label">Чаты и группы</div>`;
                         html += chatMatches.map(c => `
-                            <div class="ge-chat-item" onclick="geEngine.chat.open('${c.rid}', '${c.name.replace(/'/g, "\\'")}')">
+                            <div class="ge-chat-item" onclick="geEngine.chat.open('${c.rid}', ${jsq(c.name)})">
                                 <div class="ge-user-av" style="width:44px;height:44px;font-size:16px;background:var(--ge-accent-gradient);">${escapeHtml((c.name[0] || '#').toUpperCase())}</div>
                                 <div class="ge-item-content"><b>${escapeHtml(c.name)}</b></div>
                             </div>
@@ -3729,7 +3767,7 @@
                     if (msgMatches.length) {
                         html += `<div class="ge-search-section-label">Сообщения</div>`;
                         html += msgMatches.slice(0, 25).map(m => `
-                            <div class="ge-chat-item" onclick="geEngine.chat.open('${m.rid}', '${m.rid.replace(/'/g, "\\'")}')">
+                            <div class="ge-chat-item" onclick="geEngine.chat.open('${m.rid}', ${jsq(m.rid)})">
                                 <div class="ge-user-av" style="width:44px;height:44px;font-size:15px;">💬</div>
                                 <div class="ge-item-content"><b>${escapeHtml(m.username || '')}</b><span>${escapeHtml((m.text || '').slice(0, 70))}</span></div>
                             </div>
@@ -3806,8 +3844,8 @@
                     localStorage.setItem('ge_glass', newVal);
                     const btn = document.getElementById('ge-glass-btn');
                     const glassLbl = btn ? btn.querySelector('.ge-popup-label') : null;
-                    if (newVal === 'on') { btn.classList.add('glass-active'); if (glassLbl) glassLbl.innerText = 'Жидкое стекло: Вкл'; }
-                    else { btn.classList.remove('glass-active'); if (glassLbl) glassLbl.innerText = 'Жидкое стекло'; }
+                    if (newVal === 'on') { btn?.classList.add('glass-active'); if (glassLbl) glassLbl.innerText = 'Жидкое стекло: Вкл'; }
+                    else { btn?.classList.remove('glass-active'); if (glassLbl) glassLbl.innerText = 'Жидкое стекло'; }
                 },
                 _moonSVG: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`,
                 _sunSVG: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>`,
@@ -4050,7 +4088,7 @@
                                     : '';
                                 const clickAttr = inSelectMode
                                     ? `onclick="geEngine.ui.toggleSelectItem(${c.ts})"`
-                                    : (c.roomId ? `onclick="geEngine.chat.open('${c.roomId}', '${(c.name||'').replace(/'/g, "\\'")}')"` : '');
+                                    : (c.roomId ? `onclick="geEngine.chat.open('${c.roomId}', ${jsq((c.name||''))})"` : '');
                                 return `
                             <div class="ge-chat-item ${inSelectMode ? 'select-mode' : ''} ${isSelected ? 'selected' : ''}" ${clickAttr}>
                                 ${checkboxHtml}
@@ -4086,7 +4124,11 @@
                         geEngine.ui._lastRoomTimesSweep = Date.now();
                         await Promise.all(filtered.map(async rid => {
                             try {
-                                const res = await fetch(`/api/index?room=${encodeURIComponent(rid)}&user_email=${encodeURIComponent(geEngine.state.session.email)}`);
+                                // peek=1: только последнее сообщение и БЕЗ отметки «прочитано». Раньше здесь
+                                // грузилась вся переписка каждого чата (с фото и голосовыми) раз в 12 секунд,
+                                // и все чаты заодно помечались прочитанными — у собеседника стояли ✓✓,
+                                // хотя чат даже не открывали.
+                                const res = await fetch(`/api/index?room=${encodeURIComponent(rid)}&peek=1`);
                                 const data = await res.json();
                                 const raw = data.messages?.result?.[0];
                                 if (raw) {
@@ -4191,8 +4233,8 @@
                                 isDeletedProfile = true;
                             } else if (profile && profile.name) {
                                 displayName = safeDecodeURIComponent(profile.name);
-                                avColor = profile.avColor ? safeDecodeURIComponent(profile.avColor) : 'var(--ge-accent-gradient)';
-                                avImg = profile.avImg ? safeDecodeURIComponent(profile.avImg) : null;
+                                avColor = geSafeColor(profile.avColor ? safeDecodeURIComponent(profile.avColor) : '');
+                                avImg = profile.avImg ? (geSafeData(safeDecodeURIComponent(profile.avImg), 'image') || null) : null;
                                 // Приглашение, которое мы сами отправили и ещё ждём ответа —
                                 // помечаем явно, чтобы чат не пропадал бесследно из списка.
                                 if (profile._pendingInvite) {
@@ -4221,7 +4263,7 @@
                             if (groupProfile && groupProfile.name) {
                                 displayName = groupProfile.name;
                                 subtitle = `Группа • ${groupProfile.memberCount} уч.`;
-                                if (groupProfile.avImg) avImg = groupProfile.avImg;
+                                if (groupProfile.avImg) avImg = geSafeData(groupProfile.avImg, 'image') || null;
                             } else {
                                 displayName = 'Загрузка…';
                             }
@@ -4244,7 +4286,7 @@
                             : '';
                         const itemClickAttr = inSelectMode
                             ? `onclick="geEngine.ui.toggleSelectItem('${rid}')"`
-                            : `onclick="geEngine.chat.open('${rid}', '${displayName.replace(/'/g, "\\'")}', false, '${resolvedTargetEmail || ''}')"`;
+                            : `onclick="geEngine.chat.open('${rid}', ${jsq(displayName)}, false, ${jsq(resolvedTargetEmail || '')})"`;
 
                         return `
                             <div class="ge-chat-item ${rid === geEngine.state.activeRoom ? 'active' : ''} ${isPinned ? 'pinned' : ''} ${inSelectMode ? 'select-mode' : ''} ${isSelected ? 'selected' : ''}" ${itemClickAttr}>
@@ -4263,7 +4305,7 @@
                                     <button class="ge-menu-btn" onclick="event.stopPropagation(); geEngine.chat.openClearChatModal(event, '${rid}')">
                                         Очистить чат
                                     </button>
-                                    ${(!isGroup && !isBot && resolvedTargetEmail) ? `<button class="ge-menu-btn ${geEngine.privacy.isBlocked(resolvedTargetEmail) ? '' : 'danger'}" onclick="event.stopPropagation(); document.querySelectorAll('.ge-context-menu.active').forEach(m => m.classList.remove('active')); ${geEngine.privacy.isBlocked(resolvedTargetEmail) ? `geEngine.privacy.unblock('${resolvedTargetEmail}')` : `geEngine.privacy.block('${resolvedTargetEmail}', '${displayName.replace(/'/g, "\\'")}')`}">
+                                    ${(!isGroup && !isBot && resolvedTargetEmail) ? `<button class="ge-menu-btn ${geEngine.privacy.isBlocked(resolvedTargetEmail) ? '' : 'danger'}" onclick="event.stopPropagation(); document.querySelectorAll('.ge-context-menu.active').forEach(m => m.classList.remove('active')); ${geEngine.privacy.isBlocked(resolvedTargetEmail) ? `geEngine.privacy.unblock(${jsq(resolvedTargetEmail)})` : `geEngine.privacy.block(${jsq(resolvedTargetEmail)}, ${jsq(displayName)})`}">
                                         ${geEngine.privacy.isBlocked(resolvedTargetEmail) ? 'Убрать из чёрного списка' : 'В чёрный список'}
                                     </button>` : ''}
                                     ${isBot ? '' : `<button class="ge-menu-btn" onclick="geEngine.chat.removeRoom(event, '${rid}')">
@@ -4307,6 +4349,29 @@
                         scroller.scrollTop = prevScroll;
                     }
                 },
+                // Просмотр фото поверх чата. Раньше фото открывалось через window.open(data:…),
+                // а браузеры такие адреса блокируют — по нажатию ничего не происходило.
+                autoGrowInput() {
+                    const el = document.getElementById('ge-main-input');
+                    if (!el || el.tagName !== 'TEXTAREA') return;
+                    el.style.height = 'auto';
+                    el.style.height = Math.min(el.scrollHeight + 4, 160) + 'px';
+                },
+                openImage(src) {
+                    if (!geSafeData(src, 'image')) return;
+                    let box = document.getElementById('ge-image-viewer');
+                    if (!box) {
+                        box = document.createElement('div');
+                        box.id = 'ge-image-viewer';
+                        box.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;cursor:zoom-out;padding:16px;';
+                        box.innerHTML = '<img style="max-width:100%;max-height:100%;border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,.5);">';
+                        box.onclick = () => { box.style.display = 'none'; };
+                        document.addEventListener('keydown', e => { if (e.key === 'Escape') box.style.display = 'none'; });
+                        document.body.appendChild(box);
+                    }
+                    box.querySelector('img').src = src;
+                    box.style.display = 'flex';
+                },
                 renderMessages(messages) {
                     geEngine.ui._lastRenderedMessages = messages;
                     const hideBlocked = !!geEngine.state.activeRoom && !geEngine.state.activeRoom.startsWith('private-');
@@ -4336,7 +4401,7 @@
                     container.innerHTML = validMessages.map(raw => {
                         let m;
                         try { m = typeof raw === 'string' ? JSON.parse(decodeURIComponent(raw)) : raw; } catch(e) { return ''; }
-                        const isMe = m.email === geEngine.state.session.email;
+                        const isMe = String(m.email || '').toLowerCase() === String(geEngine.state.session.email || '').toLowerCase();
                         // Статус прочтения считаем по факту: "прочитано" (двойная галочка), если
                         // кто-то ДРУГОЙ (не сам отправитель) открывал этот чат позже времени отправки.
                         // Раньше статус был статичным полем m.status, которое никогда не менялось —
@@ -4357,7 +4422,7 @@
                         const isSenderDeleted = !isMe && geEngine.state.deletedAccountsCache[m.email];
                         const metaTopHtml = isMe
                             ? 'Вы'
-                            : `<span class="ge-user-link" onclick="event.stopPropagation(); geEngine.ui.openUserProfile('${(m.email||'').replace(/'/g,"\\'")}', '${(m.username||'').replace(/'/g,"\\'")}')">${isSenderDeleted ? `<span style="display:inline-flex;vertical-align:middle;margin-right:3px;opacity:0.7;">${deletedAccountIconSvg(12)}</span>` : ''}${escapeHtml(m.username)}</span>`;
+                            : `<span class="ge-user-link" onclick="event.stopPropagation(); geEngine.ui.openUserProfile(${jsq((m.email||''))}, ${jsq((m.username||''))})">${isSenderDeleted ? `<span style="display:inline-flex;vertical-align:middle;margin-right:3px;opacity:0.7;">${deletedAccountIconSvg(12)}</span>` : ''}${escapeHtml(m.username)}</span>`;
                         const uid = msgIdCounter++;
 
                         // СИСТЕМНОЕ СООБЩЕНИЕ (вступление/выход из группы и т.п.)
@@ -4369,7 +4434,7 @@
                         if (hideBlocked && !isMe && geEngine.privacy.isBlocked(m.email)) {
                             const key = `${m.email}:${m.ts || ''}`;
                             if (!geEngine.privacy._revealed.has(key)) {
-                                return `<div class="ge-blocked-msg" onclick="geEngine.privacy.reveal('${key.replace(/'/g, "\\'")}')">Сообщение от пользователя из чёрного списка<u>Показать</u></div>`;
+                                return `<div class="ge-blocked-msg" onclick="geEngine.privacy.reveal(${jsq(key)})">Сообщение от пользователя из чёрного списка<u>Показать</u></div>`;
                             }
                         }
 
@@ -4423,11 +4488,11 @@
 
                         // ФОТО
                         if (m.mediaType === 'image') {
-                            const mediaSrc = m.mediaData || (m.mediaKey ? localStorage.getItem(m.mediaKey) : null) || '';
+                            const mediaSrc = geSafeData(m.mediaData || (m.mediaKey ? localStorage.getItem(m.mediaKey) : null) || '', 'image');
                             if (!mediaSrc) return '';
                             return `<div class="ge-msg-bubble ${isMe ? 'me' : 'them'}" style="padding:6px;">
                                 <span class="ge-msg-meta-top" style="padding:6px 8px 0;">${metaTopHtml}</span>
-                                <img class="ge-msg-image" src="${mediaSrc}" onclick="window.open('${mediaSrc}', '_blank')" alt="Фото">
+                                <img class="ge-msg-image" src="${mediaSrc}" onclick="geEngine.ui.openImage(this.src)" alt="Фото">
                                 ${m.text ? `<div class="ge-msg-text" style="padding:8px 8px 0;">${escapeHtml(m.text)}</div>` : ''}
                                 <div class="ge-msg-status-line" style="padding:4px 8px 2px;">
                                     <span>${timeStr}</span>
@@ -4468,7 +4533,7 @@
 
                         // ФАЙЛ
                         if (m.mediaType === 'file') {
-                            const mediaSrc = m.mediaData || (m.mediaKey ? localStorage.getItem(m.mediaKey) : null) || '';
+                            const mediaSrc = geSafeData(m.mediaData || (m.mediaKey ? localStorage.getItem(m.mediaKey) : null) || '', 'file');
                             if (!mediaSrc) return '';
                             const sizeStr = m.fileSize ? (m.fileSize > 1024*1024 ? (m.fileSize/1024/1024).toFixed(1)+' МБ' : Math.round(m.fileSize/1024)+' КБ') : '';
                             const fileIcon = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>`;
@@ -4492,7 +4557,7 @@
                         // ГОЛОСОВОЕ СООБЩЕНИЕ
                         if (m.mediaType === 'voice') {
                             const dur = geEngine.media._fmtDur(m.mediaDuration || 0);
-                            const mediaSrc = m.mediaData || (m.mediaKey ? localStorage.getItem(m.mediaKey) : null) || '';
+                            const mediaSrc = geSafeData(m.mediaData || (m.mediaKey ? localStorage.getItem(m.mediaKey) : null) || '', 'audio');
                             if (!mediaSrc) return ''; // медиа не найдено на этом устройстве
                             const bars = Array.from({length: 30}, (_, i) => {
                                 const h = 6 + Math.abs(Math.sin(i * 0.8 + uid * 0.01)) * 22;
@@ -4516,7 +4581,7 @@
 
                         // ВИДЕО КРУЖОЧЕК
                         if (m.mediaType === 'circle') {
-                            const mediaSrc = m.mediaData || (m.mediaKey ? localStorage.getItem(m.mediaKey) : null) || '';
+                            const mediaSrc = geSafeData(m.mediaData || (m.mediaKey ? localStorage.getItem(m.mediaKey) : null) || '', 'video');
                             if (!mediaSrc) return ''; // медиа не найдено на этом устройстве
                             const playIcon = `<svg width="36" height="36" viewBox="0 0 24 24" fill="white" style="filter:drop-shadow(0 2px 4px rgba(0,0,0,0.4))"><polygon points="5 3 19 12 5 21 5 3"/></svg>`;
                             return `<div class="ge-msg-bubble ge-bubble-circle ${isMe ? 'me' : 'them'}">
@@ -4849,9 +4914,17 @@
                         document.getElementById('ge-inc-name').innerText = this._targetName;
                         document.getElementById('ge-inc-type').innerHTML = this._callType === 'video' ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:5px"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg> Видео звонок' : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:5px"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.41 2 2 0 0 1 3.6 1.23h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.77a16 16 0 0 0 6.29 6.29l.94-.94a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg> Аудио звонок';
                         document.getElementById('ge-incoming-call').style.display = 'block';
+                        // Раньше мелодия стояла ПОСЛЕ return и никогда не играла — входящий звонок был беззвучным
+                        this._playRing('incoming');
+                        if (document.hidden) {
+                            const title = this._callType === 'video' ? 'Входящий видеозвонок' : 'Входящий звонок';
+                            try {
+                                if (window.electronAPI?.notify) window.electronAPI.notify(title, this._targetName);
+                                else if (window.Notification && Notification.permission === 'granted') new Notification(title, { body: this._targetName, icon: '/favicon-192.png' });
+                            } catch {}
+                        }
                         return;
                     }
-                    if (sig.type === 'call-request') { this._playRing('incoming'); }
                     if (sig.type === 'call-end') {
                         // Собеседник завершил/отменил/не поднял. Карточку в чат уже отправила
                         // та сторона, что реально положила трубку — здесь только обновляем
@@ -5087,6 +5160,7 @@
                 },
 
                 _cleanupCall() {
+                    this._stopRing();
                     this._stopSignalPolling();
                     if (this._timerInterval2) { clearInterval(this._timerInterval2); this._timerInterval2 = null; }
                     if (this._pc) { this._pc.close(); this._pc = null; }
@@ -5174,7 +5248,8 @@
                     // успевает за переключением").
                     const requestedRoom = geEngine.state.activeRoom || 'general';
                     try {
-                        const url = `/api/index?room=${requestedRoom}&user_email=${geEngine.state.session.email}`;
+                        // Пока вкладка скрыта, сообщения подгружаем, но не отмечаем прочитанными (✓✓ — только когда реально видно)
+                        const url = `/api/index?room=${encodeURIComponent(requestedRoom)}${document.hidden ? '&noread=1' : ''}`;
                         const res = await fetch(url);
                         const data = await res.json();
 
@@ -5279,6 +5354,19 @@
 
                         // Объединяем серверные комнаты с локальными (группы)
                         const serverRooms = data.rooms?.result || [];
+                        // «Удалённые» чаты помнятся только на этом устройстве. Если сервер снова
+                        // считает нас участником (контакт добавили заново, в группу вернулись с другого
+                        // устройства), чат должен вернуться — раньше он пропадал здесь навсегда.
+                        // Исключения: General (сервер всегда возвращает его) и только что удалённые.
+                        {
+                            const recent = geEngine.state._deletedAt || {};
+                            const keep = geEngine.state.deletedRooms.filter(rid =>
+                                rid === 'general' || !serverRooms.includes(rid) || (Date.now() - (recent[rid] || 0)) < 20000);
+                            if (keep.length !== geEngine.state.deletedRooms.length) {
+                                geEngine.state.deletedRooms = keep;
+                                localStorage.setItem('ge_deleted_rooms', JSON.stringify(keep));
+                            }
+                        }
                         const allRooms = Array.from(new Set([...serverRooms, ...geEngine.state.localRooms]));
                         geEngine.state._lastAllRooms = allRooms; // кэш для мгновенного переключения вкладок
 
@@ -5347,7 +5435,7 @@
                     // прикрепления) идёт подписью к этому же сообщению.
                     if (pending) {
                         if (!geEngine.state.activeRoom) return;
-                        input.value = '';
+                        input.value = ''; geEngine.ui.autoGrowInput();
                         geEngine.media.clearPendingAttachment();
                         const extra = ['image', 'gif', 'video'].includes(pending.mediaType)
                             ? { maxSize: 900 * 1024, caption: text }
@@ -5364,7 +5452,7 @@
                         ts: nowTs,
                         time: new Date(nowTs).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}), status: 'sent' 
                     };
-                    input.value = '';
+                    input.value = ''; geEngine.ui.autoGrowInput();
 
                     // Показываем сообщение сразу же, не дожидаясь ответа сервера
                     // или следующего опроса — это и вызывало задержку, особенно на телефоне.
@@ -5493,6 +5581,11 @@
                 },
                 _openChatTargetEmail: null,
                 async open(id, prettyName, knownEmpty, explicitTargetEmail) {
+                    // Номер этого открытия. Если, пока ждём сеть, пользователь уже открыл другой чат,
+                    // продолжение старого open() не должно трогать шапку и поле ввода нового чата
+                    // (раньше в шапке группы мог появиться человек из предыдущего чата).
+                    const seq = geEngine.chat._openSeq = (geEngine.chat._openSeq || 0) + 1;
+                    const stale = () => seq !== geEngine.chat._openSeq;
                     geEngine.ex.close();
                     geEngine.media.clearPendingAttachment(); // не тащим незаконченное вложение в другой чат
                     geEngine.state.activeRoom = id;
@@ -5552,6 +5645,7 @@
                             || geEngine.state.roomEmailMap[id]
                             || await resolvePrivateRoomEmail(id)
                             || null;
+                        if (stale()) return;
                         if (targetEmail) geEngine.chat._rememberRoomEmail(id, targetEmail);
 
                         // Если собеседник ещё не в контактах — прячем композер и показываем
@@ -5583,6 +5677,7 @@
                             inviteBar.classList.toggle('ge-hidden', isContact);
                             if (!isContact) {
                                 const alreadySent = await geEngine.chat._isInviteStillPending(targetEmail);
+                                if (stale()) return;
                                 inviteBar.innerText = alreadySent ? 'Заявка отправлена — ждём ответа' : 'Отправить приглашение в контакты';
                                 inviteBar.disabled = alreadySent;
                                 inviteBar.style.opacity = alreadySent ? '0.6' : '1';
@@ -5606,6 +5701,7 @@
                             try {
                                 const res = await fetch(`/api/index?action=findUser&query=${encodeURIComponent(targetEmail)}`);
                                 const data = await res.json();
+                                if (stale()) return;
                                 if (data.status === 'found' && data.profile?.deleted) {
                                     // Собеседник удалил аккаунт — сообщаем об этом явно вместо
                                     // того, чтобы чат вечно висел на "Загрузка…"/пустом профиле.
@@ -5622,6 +5718,7 @@
                                     // устаревшее значение обратно.
                                     delete geEngine.state.deletedAccountsCache[targetEmail];
                                     await applyNormalComposerState();
+                                    if (stale()) return;
                                     const freshName = data.profile.name ? safeDecodeURIComponent(data.profile.name) : (prettyName || id);
                                     if (nameEl) nameEl.innerText = freshName;
                                     activeAv.classList.remove('ge-av-deleted', 'ge-status-online', 'ge-status-offline');
@@ -5785,7 +5882,9 @@
                 // event.stopPropagation(), чтобы им мог пользоваться и одиночный removeRoom(),
                 // и массовое удаление из режима выбора.
                 _removeRoomCore(rid) {
-                    geEngine.state.deletedRooms.push(rid);
+                    if (!geEngine.state._deletedAt) geEngine.state._deletedAt = {};
+                    geEngine.state._deletedAt[rid] = Date.now();
+                    if (!geEngine.state.deletedRooms.includes(rid)) geEngine.state.deletedRooms.push(rid);
                     localStorage.setItem('ge_deleted_rooms', JSON.stringify(geEngine.state.deletedRooms));
 
                     // Чистим локальный кэш профиля/пометки "приглашение отправлено" для этой
@@ -5820,6 +5919,10 @@
                         // "Удалить контакт") — серверу для removeContact нужен именно email,
                         // а не сам roomId (сервер сам находит нужную комнату через userId).
                         const targetEmail = geEngine.state.roomEmailMap[rid];
+                        if (!targetEmail) {
+                            // email ещё не известен — узнаём и всё равно удаляем на сервере
+                            resolvePrivateRoomEmail(rid).then(em => em && fetch(`/api/index?action=removeContact&target_email=${encodeURIComponent(em)}`)).catch(() => {});
+                        }
                         if (targetEmail) {
                             fetch(`/api/index?action=removeContact&user_email=${encodeURIComponent(geEngine.state.session.email)}&target_email=${encodeURIComponent(targetEmail)}`).catch(() => {});
                             // На случай, если пометка "приглашение отправлено" осталась в
@@ -6799,12 +6902,12 @@
                             const isUnread = !geEngine.contacts._readSet.has(geEngine.contacts._reqKey(r));
                             return `
                             <div class="ge-request-item">
-                                <div class="ge-user-av" style="width:36px;height:36px;font-size:14px;background:var(--ge-accent-gradient);flex-shrink:0;position:relative;">${(r.name[0]||'#').toUpperCase()}${isUnread ? '<span style="position:absolute;top:-2px;right:-2px;width:9px;height:9px;border-radius:50%;background:#ff4757;border:2px solid var(--bg-elevated,#fff);"></span>' : ''}</div>
-                                <span class="ge-request-item-name" style="${isUnread ? 'font-weight:700;' : 'opacity:0.7;'}">${r.name}</span>
-                                <button class="ge-request-action-btn accept" title="Принять" onclick="event.stopPropagation(); geEngine.contacts.accept('${r.email.replace(/'/g,"\\'")}')">
+                                <div class="ge-user-av" style="width:36px;height:36px;font-size:14px;background:var(--ge-accent-gradient);flex-shrink:0;position:relative;">${escapeHtml((String(r.name || '')[0]||'#').toUpperCase())}${isUnread ? '<span style="position:absolute;top:-2px;right:-2px;width:9px;height:9px;border-radius:50%;background:#ff4757;border:2px solid var(--bg-elevated,#fff);"></span>' : ''}</div>
+                                <span class="ge-request-item-name" style="${isUnread ? 'font-weight:700;' : 'opacity:0.7;'}">${escapeHtml(r.name)}</span>
+                                <button class="ge-request-action-btn accept" title="Принять" onclick="event.stopPropagation(); geEngine.contacts.accept(${jsq(r.email)})">
                                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                                 </button>
-                                <button class="ge-request-action-btn decline" title="Отклонить" onclick="event.stopPropagation(); geEngine.contacts.decline('${r.email.replace(/'/g,"\\'")}')">
+                                <button class="ge-request-action-btn decline" title="Отклонить" onclick="event.stopPropagation(); geEngine.contacts.decline(${jsq(r.email)})">
                                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                                 </button>
                             </div>
@@ -6958,7 +7061,7 @@
                         const fileIcon = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>`;
                         bar.innerHTML = `
                             <span style="width:40px;height:40px;border-radius:8px;background:var(--bg-body);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--ge-primary);">${fileIcon}</span>
-                            <span style="flex:1;font-size:13px;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${att.fileName}</span>
+                            <span style="flex:1;font-size:13px;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(att.fileName)}</span>
                             ${removeBtn}
                         `;
                     }
@@ -7257,7 +7360,7 @@
                 // Разрешаем показывать только GIF/видео из GIPHY и свои data:-файлы
                 safeMediaSrc(src) {
                     src = String(src || '');
-                    if (/^data:(image\/gif|video\/(mp4|webm|quicktime));base64,[A-Za-z0-9+/=]+$/.test(src)) return src;
+                    if (/^data:(image\/gif|video\/(mp4|webm|quicktime))(;[a-z0-9=.+,-]+)*?;base64,[A-Za-z0-9+/=]+$/i.test(src)) return src;
                     if (/^https:\/\/media\d*\.giphy\.com\/[A-Za-z0-9._\/?=&%-]+$/.test(src)) return src;
                     if (/^https:\/\/i\.giphy\.com\/[A-Za-z0-9._\/-]+$/.test(src)) return src;
                     return '';
@@ -7338,6 +7441,7 @@
                     input.value = input.value.slice(0, a) + e + input.value.slice(b);
                     const pos = a + e.length;
                     try { input.setSelectionRange(pos, pos); } catch {}
+                    geEngine.ui.autoGrowInput();
                     if (!matchMedia('(hover: none)').matches) input.focus();
                     const recent = [e, ...this._recent().filter(x => x !== e)].slice(0, 24);
                     try { localStorage.setItem('ge_recent_emoji', JSON.stringify(recent)); } catch {}
@@ -7509,6 +7613,88 @@
                 },
             },
 
+            // ===== ОФОРМЛЕНИЕ: тема, жидкое стекло, снег — всё в одном окне =====
+            appearance: {
+                open() {
+                    geEngine.ui.closeSettingsPopup();
+                    this.sync();
+                    geEngine.ui._openModal('ge-modal-appearance');
+                },
+                close() { geEngine.ui._closeModal('ge-modal-appearance'); },
+                sync() {
+                    const auto = localStorage.getItem('ge_auto_theme') === 'on';
+                    const mode = auto ? 'auto' : (document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light');
+                    document.querySelectorAll('#ge-ap-theme button').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+                    document.getElementById('ge-ap-auto-hint').style.visibility = auto ? 'visible' : 'hidden';
+                    document.getElementById('ge-ap-glass').classList.toggle('on', document.documentElement.getAttribute('data-glass') === 'on');
+                    document.getElementById('ge-ap-snow').classList.toggle('on', !!geEngine.state.isSnowing);
+                },
+                setTheme(mode) {
+                    const autoOn = localStorage.getItem('ge_auto_theme') === 'on';
+                    if (mode === 'auto') {
+                        if (!autoOn) geEngine.ui.toggleAutoTheme();
+                    } else {
+                        // Ручной выбор выключает авто — иначе через минуту тема переключилась бы обратно
+                        if (autoOn) geEngine.ui.toggleAutoTheme();
+                        document.documentElement.setAttribute('data-theme', mode);
+                        localStorage.setItem('ge_theme', mode);
+                    }
+                    this.sync();
+                },
+                toggleGlass() { geEngine.ui.toggleGlass(); this.sync(); },
+                toggleSnow() { geEngine.effects.toggleSnow(); this.sync(); },
+            },
+
+            // ===== СМЕНА ПАРОЛЯ (⚙ → Конфиденциальность → Пароль) =====
+            password: {
+                _challenge: null, _pass: null,
+                open() {
+                    geEngine.ui.closeSettingsPopup();
+                    this._challenge = null; this._pass = null;
+                    ['pw-new', 'pw-new2', 'pw-otp'].forEach(id => { document.getElementById(id).value = ''; });
+                    document.getElementById('pw-fields').classList.remove('ge-hidden');
+                    document.getElementById('pw-otp-section').classList.add('ge-hidden');
+                    geEngine.ui._openModal('ge-modal-password');
+                    setTimeout(() => document.getElementById('pw-new').focus(), 50);
+                },
+                close() { geEngine.ui._closeModal('ge-modal-password'); },
+                async sendCode() {
+                    const p1 = document.getElementById('pw-new').value.trim();
+                    const p2 = document.getElementById('pw-new2').value.trim();
+                    if (p1.length < 8) return alert('Пароль слишком короткий — нужно не меньше 8 символов.');
+                    if (/[^a-zA-Z0-9!@#$%^&*()_+\-=\[\]{}|;':",.<>?/`~\\]/.test(p1)) return alert('Пароль: только латинские буквы, цифры и спецсимволы. Пробелы запрещены!');
+                    if (p1 !== p2) return alert('Пароли не совпадают.');
+                    const btn = document.getElementById('pw-send-btn');
+                    btn.disabled = true;
+                    try {
+                        const data = await geEngine.auth._api('passwordCode', { password: p1 });
+                        this._challenge = data.challenge; this._pass = p1;
+                        document.getElementById('pw-otp-hint').innerText = data.email
+                            ? `Код отправлен на ${data.email} и в чат «GeLink».`
+                            : 'Код отправлен в чат «GeLink».';
+                        document.getElementById('pw-fields').classList.add('ge-hidden');
+                        document.getElementById('pw-otp-section').classList.remove('ge-hidden');
+                        setTimeout(() => document.getElementById('pw-otp').focus(), 50);
+                    } catch (err) { alert(err.message); }
+                    finally { btn.disabled = false; }
+                },
+                async confirm() {
+                    const code = document.getElementById('pw-otp').value.trim();
+                    if (code.length !== 6) return alert('Введите 6 цифр кода.');
+                    try {
+                        await geEngine.auth._api('updateProfile', { password: this._pass, pwChallenge: this._challenge, pwCode: code });
+                    } catch (err) { return alert(err.message); }
+                    // Резервную копию ключа переписки перешифровываем новым паролем
+                    const email = geEngine.state.session.email;
+                    if (geEngine.e2e._keyPair?.privateJwk) {
+                        geEngine.e2e._createBackup(email, this._pass, { priv: geEngine.e2e._keyPair.privateJwk, pub: geEngine.e2e._keyPair.publicJwk }).catch(() => {});
+                    }
+                    this._pass = null; this._challenge = null;
+                    this.close();
+                    geEngine.ui.showToast('Пароль изменён', 'success');
+                },
+            },
+
             // ===== КОНФИДЕНЦИАЛЬНОСТЬ: чёрный список =====
             privacy: {
                 blocked: new Set(),
@@ -7571,7 +7757,7 @@
                         return `<div class="ge-dev-item">${av}
                             <div class="ge-dev-info"><div class="ge-dev-name">${escapeHtml(name)}</div>
                             <div class="ge-dev-meta">${u.nickname ? '@' + escapeHtml(u.nickname) : escapeHtml(u.email)}</div></div>
-                            <button class="ge-dev-end" style="color:var(--ge-primary)" onclick="geEngine.privacy.unblock('${u.email.replace(/'/g, "\\'")}', true)">Разблокировать</button>
+                            <button class="ge-dev-end" style="color:var(--ge-primary)" onclick="geEngine.privacy.unblock(${jsq(u.email)}, true)">Разблокировать</button>
                         </div>`;
                     }).join('');
                 },
@@ -7772,7 +7958,7 @@
                         // которого у человека нет — на новом устройстве просто создаются новые ключи.
                         if (!data.hasE2E || !data.passwordSet) geEngine.e2e._noPrompt = true;
                         geEngine.init('');
-                        if (data.isNew) setTimeout(() => alert('Добро пожаловать в GeLink! Аккаунт создан через Minva. Пароль можно задать в профиле.'), 400);
+                        if (data.isNew) setTimeout(() => alert('Добро пожаловать в GeLink! Аккаунт создан через Minva. Пароль можно задать в ⚙ → Конфиденциальность → Пароль.'), 400);
                     } catch { alert('Ошибка соединения с сервером. Попробуйте снова.'); }
                 },
                 async openSettings() {
@@ -7787,7 +7973,7 @@
                         if (confirm('Привязать аккаунт Minva? После этого в GeLink можно будет входить через Minva.')) this.start('link');
                         return;
                     }
-                    if (!st.passwordSet) return alert('Minva привязан. Это единственный способ входа в этот аккаунт — чтобы отвязать Minva, сначала задайте пароль в профиле.');
+                    if (!st.passwordSet) return alert('Minva привязан. Это единственный способ входа в этот аккаунт — чтобы отвязать Minva, сначала задайте пароль в ⚙ → Конфиденциальность → Пароль.');
                     if (!confirm('Minva привязан к аккаунту. Отвязать?')) return;
                     const res = await fetch('/api/index?action=minvaUnlink', { method: 'POST', headers: { Authorization: 'Bearer ' + jwt } });
                     const data = await res.json();
@@ -7848,7 +8034,8 @@
                 // (экономит CPU/батарею на мобильных и убирает подтормаживание
                 // при возврате в приложение, когда накопившиеся тики выстреливают разом)
                 setInterval(() => { if (!document.hidden) geEngine.chat.refresh(); }, 3000);
-                setInterval(() => { if (!document.hidden) geEngine.calls._pollSignals(); }, 2000);
+                // Звонки проверяем и в свёрнутой вкладке/окне — иначе входящий звонок приходил, только когда откроешь GeLink
+                setInterval(() => geEngine.calls._pollSignals(), 2000);
                 geEngine.contacts.checkRequests();
                 setInterval(() => { if (!document.hidden) geEngine.contacts.checkRequests(); }, 10000);
 
@@ -7927,14 +8114,17 @@
             const saved = localStorage.getItem('ge_v9_token');
             if (saved && !minvaLogin) { geEngine.state.session = JSON.parse(saved); geEngine.init(); }
 
-            document.getElementById('ge-main-input').addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') {
-                    if (geEngine.media._recording) {
-                        geEngine.media._stopAndSend();                    } else {
-                        geEngine.chat.broadcast();
-                    }
-                }
+            // Enter — отправить (на компьютере), Shift+Enter — новая строка.
+            // На телефоне Enter переносит строку, отправка — кнопкой, как в Telegram.
+            const mainInput = document.getElementById('ge-main-input');
+            const isTouch = matchMedia('(hover: none) and (pointer: coarse)').matches;
+            mainInput.addEventListener('keydown', (e) => {
+                if (e.key !== 'Enter' || e.shiftKey || e.isComposing || isTouch) return;
+                e.preventDefault();
+                if (geEngine.media._recording) geEngine.media._stopAndSend();
+                else geEngine.chat.broadcast();
             });
+            mainInput.addEventListener('input', () => geEngine.ui.autoGrowInput());
 
             // Если пользователь проскроллил вверх, чтобы почитать историю сообщений,
             // не даём автообновлению (на каждый тик опроса) сбрасывать его к последнему сообщению.
@@ -7949,21 +8139,9 @@
     </script>
     <!-- ПОПАП НАСТРОЕК — в body чтобы перекрывал всё -->
     <div id="ge-settings-popup" class="ge-settings-popup" style="position:fixed; display:none;">
-        <button class="ge-popup-item" onclick="geEngine.ui.toggleTheme()">
-            <span class="ge-popup-icon" id="ge-theme-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></span>
-            <span class="ge-popup-label" id="ge-theme-label">Тёмная тема</span>
-        </button>
-        <button class="ge-popup-item ge-auto-theme-row" id="ge-auto-theme-btn" onclick="geEngine.ui.toggleAutoTheme()">
-            <span class="ge-popup-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg></span>
-            <span class="ge-popup-label" id="ge-auto-theme-label">Авто тема</span>
-        </button>
-        <button class="ge-popup-item" id="ge-glass-btn" onclick="geEngine.ui.toggleGlass()">
-            <span class="ge-popup-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></span>
-            <span class="ge-popup-label">Жидкое стекло</span>
-        </button>
-        <button class="ge-popup-item" id="btn-snow" onclick="geEngine.effects.toggleSnow()">
-            <span class="ge-popup-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/><line x1="19.07" y1="4.93" x2="4.93" y2="19.07"/><line x1="12" y1="2" x2="9" y2="5"/><line x1="12" y1="2" x2="15" y2="5"/><line x1="12" y1="22" x2="9" y2="19"/><line x1="12" y1="22" x2="15" y2="19"/><line x1="2" y1="12" x2="5" y2="9"/><line x1="2" y1="12" x2="5" y2="15"/><line x1="22" y1="12" x2="19" y2="9"/><line x1="22" y1="12" x2="19" y2="15"/></svg></span>
-            <span class="ge-popup-label" id="btn-snow-label">Снег: Выкл</span>
+        <button class="ge-popup-item" onclick="geEngine.appearance.open()">
+            <span class="ge-popup-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22a10 10 0 1 1 10-10c0 2.8-2.2 4-4.5 4H16a2 2 0 0 0-1.5 3.3A1.6 1.6 0 0 1 12 22z"/><circle cx="7.5" cy="10.5" r="1.2"/><circle cx="12" cy="7.5" r="1.2"/><circle cx="16.5" cy="10.5" r="1.2"/></svg></span>
+            <span class="ge-popup-label">Оформление</span>
         </button>
         <button class="ge-popup-item" onclick="geEngine.privacy.open()">
             <span class="ge-popup-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span>
