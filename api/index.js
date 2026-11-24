@@ -7,7 +7,9 @@
 import { SignJWT, jwtVerify } from 'jose';
 
 const JWT_ALG = 'HS256';
-const JWT_TTL = '7d';
+// Токен живёт долго: настоящий срок жизни входа определяет запись сеанса в базе (sess:<id>).
+// Завершили сеанс в «Устройствах» — токен сразу перестаёт работать, даже если он ещё не истёк.
+const JWT_TTL = '180d';
 
 // ── Стабильный ID пользователя (НЕ email) ─────────────────────
 // Раньше id личной комнаты строился из email обеих сторон (private-<хеш1>-<хеш2>).
@@ -204,21 +206,9 @@ async function signToken(payload, secret) {
         .sign(jwtSecret(secret));
 }
 
-// Мягкая проверка — если токен есть и валиден, возвращает email.
-// Если токена нет — возвращает null (не ломает старый фронт).
-// Если токен есть но невалиден — бросает 401.
-async function tryAuth(request, secret) {
-    const header = request.headers.get?.('authorization')
-        ?? request.headers['authorization']
-        ?? '';
-    if (!header.startsWith('Bearer ')) return null; // токена нет — ок
-    const token = header.slice(7);
-    try {
-        const { payload } = await jwtVerify(token, jwtSecret(secret));
-        return payload.email;
-    } catch {
-        throw Object.assign(new Error('Invalid or expired token'), { status: 401 });
-    }
+// Ошибка «войдите заново»: сеанс завершён, токен поддельный или устарел.
+function authError(message = 'Сеанс завершён. Войдите в GeLink снова.') {
+    return Object.assign(new Error(message), { status: 401, code: 'auth' });
 }
 
 // ── Хелпер: hgetall → объект ─────────────────────────────────
@@ -384,6 +374,225 @@ async function minvaProfile(cfg, code, verifier, redirectUri) {
     return info;
 }
 
+// ══════════════════════════════════════════════════════════════
+//  СЕАНСЫ (устройства), КОДЫ ВХОДА, ОФИЦИАЛЬНЫЙ БОТ GeLink
+// ══════════════════════════════════════════════════════════════
+const SESSION_TTL_SEC    = 180 * 24 * 3600;     // сеанс без активности живёт 180 дней
+const NEW_SESSION_LOCK   = 24 * 3600 * 1000;    // новое устройство 24 ч не может завершать другие сеансы
+const CODE_TTL_SEC       = 15 * 60;             // код действует 15 минут (так написано и в письме)
+const CODE_MAX_ATTEMPTS  = 5;
+const CODE_RESEND_MS     = 60 * 1000;
+const BOT_EMAIL          = 'official@gelink';
+const BOT_ROOM_PREFIX    = 'official-';
+
+const botRoomFor = userId => `${BOT_ROOM_PREFIX}${userId}`;
+
+// «Chrome · Windows», «GeLink для ПК · Windows», «Приложение GeLink · Android»…
+function describeDevice(ua) {
+    ua = String(ua || '');
+    let os = 'Неизвестное устройство';
+    if (/Windows NT/i.test(ua)) os = 'Windows';
+    else if (/iPhone/i.test(ua)) os = 'iPhone';
+    else if (/iPad/i.test(ua)) os = 'iPad';
+    else if (/Android/i.test(ua)) os = 'Android';
+    else if (/Mac OS X|Macintosh/i.test(ua)) os = 'macOS';
+    else if (/CrOS/i.test(ua)) os = 'ChromeOS';
+    else if (/Linux/i.test(ua)) os = 'Linux';
+    let app;
+    if (/Electron\//i.test(ua)) app = 'GeLink для ПК';
+    else if (/; wv\)|GeLinkApp/i.test(ua)) app = 'Приложение GeLink';
+    else if (/YaBrowser/i.test(ua)) app = 'Яндекс Браузер';
+    else if (/Edg\//i.test(ua)) app = 'Edge';
+    else if (/OPR\/|Opera/i.test(ua)) app = 'Opera';
+    else if (/Firefox\//i.test(ua)) app = 'Firefox';
+    else if (/Chrome\//i.test(ua)) app = 'Chrome';
+    else if (/Safari\//i.test(ua)) app = 'Safari';
+    else app = 'Браузер';
+    return `${app} · ${os}`;
+}
+
+// Город и страна по IP — Vercel сам добавляет эти заголовки к каждому запросу
+function requestPlace(request) {
+    const dec = v => { try { return decodeURIComponent(v || ''); } catch { return v || ''; } };
+    const city = dec(getHeader(request, 'x-vercel-ip-city'));
+    const country = dec(getHeader(request, 'x-vercel-ip-country'));
+    let countryName = country;
+    try { if (country) countryName = new Intl.DisplayNames(['ru'], { type: 'region' }).of(country) || country; } catch {}
+    return [city, countryName].filter(Boolean).join(', ');
+}
+
+function requestIp(request) {
+    return String(getHeader(request, 'x-forwarded-for') || getHeader(request, 'x-real-ip') || '').split(',')[0].trim();
+}
+
+async function createSession(db, email, request, via = 'password') {
+    const sid = randomHex(16);
+    const now = String(Date.now());
+    await db('HSET', `sess:${sid}`,
+        'email', email, 'created', now, 'lastSeen', now, 'via', via,
+        'device', describeDevice(getHeader(request, 'user-agent')),
+        'place', requestPlace(request), 'ip', requestIp(request));
+    await db('EXPIRE', `sess:${sid}`, SESSION_TTL_SEC);
+    await db('SADD', `user_sessions:${email}`, sid);
+    return sid;
+}
+
+// Живые сеансы пользователя (заодно вычищает из списка истёкшие)
+async function liveSessions(db, email) {
+    const sids = (await db('SMEMBERS', `user_sessions:${email}`)) ?? [];
+    const out = [];
+    for (const sid of sids) {
+        const s = parseHash(await db('HGETALL', `sess:${sid}`));
+        if (s.email === email) out.push({ sid, ...s });
+        else await db('SREM', `user_sessions:${email}`, sid);
+    }
+    return out;
+}
+
+async function endSession(db, email, sid) {
+    await db('DEL', `sess:${sid}`);
+    await db('SREM', `user_sessions:${email}`, sid);
+}
+
+// Сообщение от официального бота GeLink в служебный чат пользователя.
+// Бот пишет открытым текстом (без E2E: это сообщения сервера, а не другого человека),
+// в базе они хранятся зашифрованными, как и все остальные сообщения.
+async function botSend(db, env, email, text, extra = {}) {
+    const userId = await getUserId(db, email);
+    if (!userId) return;
+    const room = botRoomFor(userId);
+    const msg = { username: 'GeLink', email: BOT_EMAIL, bot: true, text, ts: Date.now(), status: 'sent', ...extra };
+    await db('SADD', `user_rooms:${email}`, room);
+    await db('LPUSH', `room:${room}`, await encryptForStorage(JSON.stringify(msg), env));
+    await db('LTRIM', `room:${room}`, 0, 199);
+}
+
+function fmtWhen(ms) {
+    try {
+        return new Date(Number(ms)).toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }) + ' (UTC)';
+    } catch { return ''; }
+}
+
+// Письмо с кодом — с сервера, через REST API EmailJS (тот же шаблон, что и раньше).
+// Нужны: EMAILJS_PRIVATE_KEY (секрет из EmailJS → Account → API keys) и включённая
+// в EmailJS → Account → Security опция «Allow EmailJS API for non-browser applications».
+async function sendCodeEmail(email, name, code) {
+    const privateKey = process.env.EMAILJS_PRIVATE_KEY;
+    if (!privateKey) throw Object.assign(new Error('Отправка писем не настроена (EMAILJS_PRIVATE_KEY)'), { status: 503 });
+    const res = await fetch(process.env.EMAILJS_API_URL || 'https://api.emailjs.com/api/v1.0/email/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            service_id:  process.env.EMAILJS_SERVICE_ID  || 'service_m7095tg',
+            template_id: process.env.EMAILJS_TEMPLATE_ID || 'template_rfib6ri',
+            user_id:     process.env.EMAILJS_PUBLIC_KEY  || 'cnvoZ3PqIBehf1lbC',
+            accessToken: privateKey,
+            template_params: { email, to_name: name || email, passcode: code, time: '15 минут' },
+        }),
+    });
+    if (!res.ok) {
+        console.error('[GeLink email]', res.status, (await res.text().catch(() => '')).slice(0, 200));
+        throw Object.assign(new Error('Не удалось отправить письмо. Попробуйте позже.'), { status: 502 });
+    }
+}
+
+function newCode() {
+    const n = crypto.getRandomValues(new Uint32Array(1))[0] % 900000;
+    return String(100000 + n);
+}
+
+// Одноразовая «заявка» с кодом: login | register | reset | password.
+// Сам код в базе не хранится — только его хеш.
+async function createChallenge(db, purpose, email, data = {}) {
+    const id = randomHex(16);
+    const code = newCode();
+    await db('SET', `challenge:${id}`, JSON.stringify({
+        purpose, email, data, codeHash: await sha256Hex(`${id}:${code}`), attempts: 0, sentAt: Date.now(),
+    }), 'EX', CODE_TTL_SEC);
+    return { id, code };
+}
+
+async function loadChallenge(db, id, purpose) {
+    if (!id || typeof id !== 'string' || id.length > 64) return null;
+    const raw = await db('GET', `challenge:${id}`);
+    if (!raw) return null;
+    const ch = JSON.parse(raw);
+    return ch.purpose === purpose ? ch : null;
+}
+
+// Проверяет код. Возвращает challenge при успехе (и удаляет его), иначе бросает понятную ошибку.
+async function checkChallenge(db, id, purpose, code) {
+    const ch = await loadChallenge(db, id, purpose);
+    if (!ch) throw Object.assign(new Error('Код устарел. Запросите новый.'), { status: 400, code: 'expired' });
+    if (ch.attempts >= CODE_MAX_ATTEMPTS) {
+        await db('DEL', `challenge:${id}`);
+        throw Object.assign(new Error('Слишком много неверных попыток. Запросите новый код.'), { status: 429, code: 'expired' });
+    }
+    const ok = safeEqual(ch.codeHash, await sha256Hex(`${id}:${String(code || '').trim()}`));
+    if (!ok) {
+        ch.attempts += 1;
+        const ttl = await db('TTL', `challenge:${id}`);
+        await db('SET', `challenge:${id}`, JSON.stringify(ch), 'EX', Math.max(1, Number(ttl) || 1));
+        throw Object.assign(new Error('Неверный код. Попробуйте ещё раз.'), { status: 400, code: 'wrong_code' });
+    }
+    await db('DEL', `challenge:${id}`);
+    return ch;
+}
+
+// Заменяет код в существующей заявке (для «Отправить ещё раз / на почту»)
+async function reissueChallenge(db, id, ch) {
+    if (Date.now() - (ch.sentAt || 0) < CODE_RESEND_MS)
+        throw Object.assign(new Error('Новый код можно запросить через минуту.'), { status: 429 });
+    const code = newCode();
+    ch.codeHash = await sha256Hex(`${id}:${code}`);
+    ch.attempts = 0;
+    ch.sentAt = Date.now();
+    await db('SET', `challenge:${id}`, JSON.stringify(ch), 'EX', CODE_TTL_SEC);
+    return code;
+}
+
+function maskEmail(email) {
+    const [u, d] = String(email).split('@');
+    if (!d) return email;
+    return `${u.slice(0, 2)}${'•'.repeat(Math.max(1, Math.min(6, u.length - 2)))}@${d}`;
+}
+
+// Всё, что фронт сохраняет после входа (как в старом ответе action=login)
+function publicUser(email, userId, profile) {
+    return {
+        email, userId,
+        name:     profile.name     ?? email,
+        nickname: profile.nickname ?? '',
+        avColor:  profile.avColor  ?? 'var(--ge-accent-gradient)',
+        avImg:    profile.avImg    ?? null,
+        bio:      profile.bio      ?? '',
+        pubKey:   profile.pubKey   ?? null,
+    };
+}
+
+// Сверка пароля (со всеми старыми форматами хранения и их миграцией)
+async function checkPassword(db, emailLower, profile, password) {
+    const storedPass = profile.password;
+    const storedSalt = profile.salt || '';
+    if (!storedPass || !password) return false;
+    const isLegacyBase64 = storedPass.length !== 64 || !/^[0-9a-f]+$/.test(storedPass);
+    if (isLegacyBase64) {
+        let legacy;
+        try { legacy = Buffer.from(password).toString('base64'); }
+        catch { legacy = btoa(unescape(encodeURIComponent(password))); }
+        const decoded = storedPass.startsWith('%') ? decodeURIComponent(storedPass) : storedPass;
+        if (decoded !== legacy) return false;
+    } else if (storedSalt) {
+        return storedPass === await hashPassword(password, storedSalt);
+    } else if (storedPass !== await sha256Hex(password)) {
+        return false;
+    }
+    // старый формат совпал — сразу переводим на SHA-256 с солью
+    const newSalt = generateSalt();
+    await db('HSET', `profile:${emailLower}`, 'password', await hashPassword(password, newSalt), 'salt', newSalt);
+    return true;
+}
+
 export default async function handler(request, response) {
     const env = {
         url:       process.env.UPSTASH_URL,
@@ -397,9 +606,49 @@ export default async function handler(request, response) {
     }
 
     const db = (...args) => redis(env, ...args);
-    const { room = 'general', user_email, action, target_email } = request.query ?? {};
+    const { room = 'general', action, target_email } = request.query ?? {};
+
+    // ── Кто делает запрос: только по токену сеанса ──────────────
+    // Раньше почти все действия верили параметру user_email («я — такой-то»), и любой,
+    // кто знал чужую почту, мог читать и менять чужой аккаунт. Теперь пользователь
+    // определяется ТОЛЬКО по токену, а токен действует, пока жив его сеанс (sess:<id>).
+    let authCache;
+    const authenticate = async () => {
+        if (authCache !== undefined) return authCache;
+        authCache = null;
+        const header = String(getHeader(request, 'authorization') || '');
+        if (!header.startsWith('Bearer ')) return null;
+        let payload;
+        try { ({ payload } = await jwtVerify(header.slice(7), jwtSecret(env.jwt))); }
+        catch { throw authError(); }
+        if (!payload.sid || !payload.email) throw authError();
+        const sess = parseHash(await db('HGETALL', `sess:${payload.sid}`));
+        if (sess.email !== payload.email) throw authError('Этот сеанс завершён. Войдите в GeLink снова.');
+        // «Был в сети» и место обновляем не чаще раза в минуту
+        if (Date.now() - Number(sess.lastSeen || 0) > 60000) {
+            const place = requestPlace(request);
+            await db('HSET', `sess:${payload.sid}`, 'lastSeen', String(Date.now()), ...(place ? ['place', place] : []), 'ip', requestIp(request));
+            await db('EXPIRE', `sess:${payload.sid}`, SESSION_TTL_SEC);
+        }
+        authCache = { email: payload.email, sid: payload.sid, session: sess };
+        return authCache;
+    };
+    // Старые обработчики вызывают tryAuth(request, secret) — теперь он проверяет и сеанс
+    const tryAuth = async () => (await authenticate())?.email ?? null;
+
+    // Действия, которым вход не нужен. Всё остальное без действующего сеанса получает 401.
+    const PUBLIC_ACTIONS = new Set([
+        'oauthClientInfo', 'oauthToken', 'oauthUserinfo',
+        'minvaConfig', 'minvaStart', 'minvaCallback', 'minvaFinish',
+        'checkAvailable', 'register', 'registerStart', 'registerVerify', 'registerResend',
+        'login', 'loginVerify', 'loginResend',
+        'resetStart', 'resetVerify', 'resetFinish',
+        'findUser',
+    ]);
 
     try {
+        if (!PUBLIC_ACTIONS.has(action) && !(await authenticate()))
+            throw authError('Войдите в GeLink.');
 
         // ══════════════════════════════════════════════════════
         //  OAuth 2.0 — «Войти через GeLink»
@@ -622,9 +871,12 @@ export default async function handler(request, response) {
             if (!profile.nickname && !profile.name)
                 return response.status(400).json({ status: 'error', message: 'Аккаунт не найден' });
             const userId = profile.userId || await getUserId(db, data.email);
+            const sid = await createSession(db, data.email, request, 'minva');
+            const sess = parseHash(await db('HGETALL', `sess:${sid}`));
+            await botSend(db, env, data.email, `✅ Новый вход в аккаунт через Minva: ${sess.device}${sess.place ? ', ' + sess.place : ''}, ${fmtWhen(sess.created)}.\nЕсли это были не вы — завершите этот сеанс в ⚙ → Устройства.`);
             return response.status(200).json({
                 status: 'ok',
-                token: await signToken({ email: data.email }, env.jwt),
+                token: await signToken({ email: data.email, sid }, env.jwt),
                 isNew: data.isNew,
                 hasE2E: Boolean(profile.pubKey),
                 passwordSet: profile.minvaOnly !== '1',
@@ -685,112 +937,250 @@ export default async function handler(request, response) {
         //  "заняты" незавершённой регистрацией, и повторная попытка будет
         //  падать с "email уже зарегистрирован" / "никнейм уже занят".
         // ══════════════════════════════════════════════════════
-        if (action === 'register' && request.method === 'POST') {
-            const { email, password, name, nickname, avColor } = request.body;
+        // Старый путь регистрации без проверки почты — закрыт: аккаунт создаётся
+        // только после кода из письма (registerStart → registerVerify).
+        if (action === 'register') {
+            return response.status(410).json({ status: 'error', message: 'Обновите страницу GeLink (Ctrl+F5) и зарегистрируйтесь снова.' });
+        }
+
+        // ── РЕГИСТРАЦИЯ, шаг 1: проверяем данные и шлём код на почту ──
+        if (action === 'registerStart' && request.method === 'POST') {
+            const { email, password, name, nickname, avColor } = readBody(request);
             if (!email || !password || !name || !nickname)
                 return response.status(400).json({ status: 'error', message: 'Заполните все поля' });
-
-            const emailLower = email.trim().toLowerCase();
-            const nickLower  = nickname.trim().toLowerCase();
-
+            const emailLower = String(email).trim().toLowerCase();
+            const nickLower  = String(nickname).trim().toLowerCase();
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailLower))
+                return response.status(400).json({ status: 'error', message: 'Проверьте адрес почты' });
+            if (!/^[a-z0-9_]{3,20}$/.test(nickLower))
+                return response.status(400).json({ status: 'error', message: 'Никнейм: 3–20 символов, латиница, цифры, подчёркивание' });
+            if (String(password).length < 8)
+                return response.status(400).json({ status: 'error', message: 'Пароль слишком короткий!' });
             if (await db('SISMEMBER', 'all_users', emailLower) === 1)
                 return response.status(400).json({ status: 'error', message: 'Этот email уже зарегистрирован' });
-
             if (await db('GET', `nick:${nickLower}`))
                 return response.status(400).json({ status: 'error', message: 'Этот никнейм уже занят' });
 
-            await db('SADD', 'all_users', emailLower);
+            // Пароль в заявке храним уже захешированным — открытым он нигде не лежит
             const salt = generateSalt();
+            const { id, code } = await createChallenge(db, 'register', emailLower, {
+                name: String(name).slice(0, 64), nickname: nickLower, avColor: avColor || 'var(--ge-accent-gradient)',
+                passHash: await hashPassword(String(password), salt), salt,
+            });
+            await sendCodeEmail(emailLower, name, code);
+            return response.status(200).json({ status: 'ok', challenge: id, sentTo: 'email', email: maskEmail(emailLower) });
+        }
+
+        if (action === 'registerResend' && request.method === 'POST') {
+            const { challenge } = readBody(request);
+            const ch = await loadChallenge(db, challenge, 'register');
+            if (!ch) return response.status(400).json({ status: 'error', message: 'Регистрация устарела. Начните заново.' });
+            const code = await reissueChallenge(db, challenge, ch);
+            await sendCodeEmail(ch.email, ch.data.name, code);
+            return response.status(200).json({ status: 'ok', sentTo: 'email' });
+        }
+
+        // ── РЕГИСТРАЦИЯ, шаг 2: код верный — создаём аккаунт и первый сеанс ──
+        if (action === 'registerVerify' && request.method === 'POST') {
+            const { challenge, code } = readBody(request);
+            const ch = await checkChallenge(db, challenge, 'register', code);
+            const emailLower = ch.email, d = ch.data;
+            // Пока человек вводил код, кто-то мог занять почту или ник
+            if (await db('SISMEMBER', 'all_users', emailLower) === 1)
+                return response.status(400).json({ status: 'error', message: 'Этот email уже зарегистрирован' });
+            if (await db('GET', `nick:${d.nickname}`))
+                return response.status(400).json({ status: 'error', message: 'Этот никнейм уже занят. Начните заново.' });
+
+            await db('SADD', 'all_users', emailLower);
             const userId = await generateUniqueUserId(db);
             await db('HSET', `profile:${emailLower}`,
-                'name',     name,
-                'nickname', nickLower,
-                'avColor',  avColor || 'var(--ge-accent-gradient)',
-                'password', await hashPassword(password, salt),
-                'salt',     salt,
-                'userId',   userId,
-            );
-            await db('SET', `id_email:${userId}`, emailLower); // обратный индекс userId -> email
-            await db('SET', `nick:${nickLower}`, emailLower);
-            // Снимаем "надгробную метку", если этот email раньше уже был удалён —
-            // иначе новый аккаунт с той же почтой у старых контактов до сих пор
-            // показывался бы как "Аккаунт удалён".
+                'name', d.name, 'nickname', d.nickname, 'avColor', d.avColor,
+                'password', d.passHash, 'salt', d.salt, 'userId', userId);
+            await db('SET', `id_email:${userId}`, emailLower);
+            await db('SET', `nick:${d.nickname}`, emailLower);
+            await db('SADD', `user_rooms:${emailLower}`, 'general');
+            // Снимаем «надгробную метку», если эта почта раньше уже была удалена
             await db('SREM', 'deleted_users', emailLower);
 
-            const regToken = await signToken({ email: emailLower }, env.jwt);
-            return response.status(200).json({ status: 'ok', userId, token: regToken });
+            const sid = await createSession(db, emailLower, request, 'register');
+            await botSend(db, env, emailLower, '👋 Добро пожаловать в GeLink! Это официальный чат GeLink: сюда приходят коды входа и уведомления о входе с новых устройств. Список устройств — в ⚙ → Устройства.');
+            const profile = parseHash(await db('HGETALL', `profile:${emailLower}`));
+            return response.status(200).json({
+                status: 'ok', userId, token: await signToken({ email: emailLower, sid }, env.jwt),
+                user: publicUser(emailLower, userId, profile),
+            });
+        }
+
+        // ── ВХОД, шаг 1: пароль → код (в бота на других устройствах или на почту) ──
+        if (action === 'login' && request.method === 'POST') {
+            const { email, password } = readBody(request);
+            if (!email || !password)
+                return response.status(400).json({ status: 'error', message: 'Введите email и пароль' });
+            const emailLower = String(email).trim().toLowerCase();
+            const wrong = () => response.status(401).json({ status: 'error', message: 'Неверный email или пароль' });
+
+            if (await db('SISMEMBER', 'all_users', emailLower) !== 1) return wrong();
+            const profile = parseHash(await db('HGETALL', `profile:${emailLower}`));
+            if (!(await checkPassword(db, emailLower, profile, String(password)))) return wrong();
+
+            const { id, code } = await createChallenge(db, 'login', emailLower, {
+                device: describeDevice(getHeader(request, 'user-agent')), place: requestPlace(request),
+            });
+            const others = await liveSessions(db, emailLower);
+            const canEmail = !emailLower.endsWith('@users.minva');
+            let sentTo;
+            if (others.length) {
+                // Как в Telegram: если вы уже где-то вошли, код приходит туда — в чат GeLink
+                await botSend(db, env, emailLower, `🔐 Код для входа в GeLink: ${code}\n\nКто-то (надеемся, вы) входит в аккаунт: ${describeDevice(getHeader(request, 'user-agent'))}${requestPlace(request) ? ', ' + requestPlace(request) : ''}.\nНикому не сообщайте этот код. Если это не вы — смените пароль.`, { loginCode: true });
+                sentTo = 'app';
+            } else if (canEmail) {
+                await sendCodeEmail(emailLower, profile.name, code);
+                sentTo = 'email';
+            } else {
+                return response.status(400).json({ status: 'error', message: 'Этот аккаунт создан через Minva — войдите кнопкой «Войти через Minva».' });
+            }
+            return response.status(200).json({ status: 'code_required', challenge: id, sentTo, canEmail, email: canEmail ? maskEmail(emailLower) : null });
+        }
+
+        // «Отправить код на почту» / «Отправить ещё раз»
+        if (action === 'loginResend' && request.method === 'POST') {
+            const { challenge, channel } = readBody(request);
+            const ch = await loadChallenge(db, challenge, 'login');
+            if (!ch) return response.status(400).json({ status: 'error', message: 'Вход устарел. Введите пароль ещё раз.' });
+            const code = await reissueChallenge(db, challenge, ch);
+            if (channel === 'email' && !ch.email.endsWith('@users.minva')) {
+                const profile = parseHash(await db('HGETALL', `profile:${ch.email}`));
+                await sendCodeEmail(ch.email, profile.name, code);
+                return response.status(200).json({ status: 'ok', sentTo: 'email', email: maskEmail(ch.email) });
+            }
+            await botSend(db, env, ch.email, `🔐 Код для входа в GeLink: ${code}\n\nНикому не сообщайте этот код.`, { loginCode: true });
+            return response.status(200).json({ status: 'ok', sentTo: 'app' });
+        }
+
+        // ── ВХОД, шаг 2: код верный — создаём сеанс ──
+        if (action === 'loginVerify' && request.method === 'POST') {
+            const { challenge, code } = readBody(request);
+            const ch = await checkChallenge(db, challenge, 'login', code);
+            const emailLower = ch.email;
+            const profile = parseHash(await db('HGETALL', `profile:${emailLower}`));
+            if (!profile.nickname && !profile.name)
+                return response.status(400).json({ status: 'error', message: 'Аккаунт не найден' });
+            const userId = profile.userId || await getUserId(db, emailLower);
+            const sid = await createSession(db, emailLower, request, 'password');
+            const sess = parseHash(await db('HGETALL', `sess:${sid}`));
+            await botSend(db, env, emailLower, `✅ Новый вход в аккаунт: ${sess.device}${sess.place ? ', ' + sess.place : ''}, ${fmtWhen(sess.created)}.\nЕсли это были не вы — завершите этот сеанс в ⚙ → Устройства и смените пароль.`);
+            return response.status(200).json({
+                status: 'ok', token: await signToken({ email: emailLower, sid }, env.jwt),
+                user: publicUser(emailLower, userId, profile),
+            });
+        }
+
+        // ── ВОССТАНОВЛЕНИЕ ПАРОЛЯ: почта → код → новый пароль ──
+        if (action === 'resetStart' && request.method === 'POST') {
+            const emailLower = String(readBody(request).email || '').trim().toLowerCase();
+            if (!emailLower || await db('SISMEMBER', 'all_users', emailLower) !== 1)
+                return response.status(404).json({ status: 'error', message: 'На эту почту не зарегистрирован аккаунт GeLink.' });
+            if (emailLower.endsWith('@users.minva'))
+                return response.status(400).json({ status: 'error', message: 'Этот аккаунт создан через Minva — войдите кнопкой «Войти через Minva».' });
+            const profile = parseHash(await db('HGETALL', `profile:${emailLower}`));
+            const { id, code } = await createChallenge(db, 'reset', emailLower);
+            await sendCodeEmail(emailLower, profile.name, code);
+            return response.status(200).json({ status: 'ok', challenge: id, email: maskEmail(emailLower) });
+        }
+
+        if (action === 'resetVerify' && request.method === 'POST') {
+            const { challenge, code } = readBody(request);
+            const ch = await checkChallenge(db, challenge, 'reset', code);
+            const resetToken = randomHex(24);
+            await db('SET', `reset_ok:${resetToken}`, ch.email, 'EX', CODE_TTL_SEC);
+            return response.status(200).json({ status: 'ok', resetToken });
+        }
+
+        if (action === 'resetFinish' && request.method === 'POST') {
+            const { resetToken, password, e2eBackup } = readBody(request);
+            const emailLower = resetToken ? await db('GETDEL', `reset_ok:${resetToken}`) : null;
+            if (!emailLower) return response.status(400).json({ status: 'error', message: 'Время на смену пароля вышло. Начните заново.' });
+            if (String(password || '').length < 8)
+                return response.status(400).json({ status: 'error', message: 'Пароль слишком короткий!' });
+            const salt = generateSalt();
+            const fields = ['password', await hashPassword(String(password), salt), 'salt', salt];
+            if (e2eBackup) fields.push('e2eBackup', e2eBackup);
+            await db('HSET', `profile:${emailLower}`, ...fields);
+            await db('HDEL', `profile:${emailLower}`, 'minvaOnly');
+            // Пароль сброшен — выходим со ВСЕХ устройств: если аккаунт угнали, угонщик вылетит
+            for (const s of await liveSessions(db, emailLower)) await endSession(db, emailLower, s.sid);
+            await botSend(db, env, emailLower, '🔑 Пароль восстановлен по коду из письма. Все устройства вышли из аккаунта — войдите заново с новым паролем.');
+            return response.status(200).json({ status: 'ok' });
+        }
+
+        // ── Код для смены пароля в профиле (на почту; аккаунтам без почты — в чат GeLink) ──
+        if (action === 'passwordCode' && request.method === 'POST') {
+            const me = await authenticate();
+            const profile = parseHash(await db('HGETALL', `profile:${me.email}`));
+            const { id, code } = await createChallenge(db, 'password', me.email);
+            if (me.email.endsWith('@users.minva')) {
+                await botSend(db, env, me.email, `🔐 Код для смены пароля: ${code}\n\nНикому не сообщайте этот код.`, { loginCode: true });
+                return response.status(200).json({ status: 'ok', challenge: id, sentTo: 'app' });
+            }
+            await sendCodeEmail(me.email, profile.name, code);
+            return response.status(200).json({ status: 'ok', challenge: id, sentTo: 'email', email: maskEmail(me.email) });
         }
 
         // ══════════════════════════════════════════════════════
-        //  ВХОД  — публичный эндпоинт, выдаёт JWT
+        //  УСТРОЙСТВА (активные сеансы)
         // ══════════════════════════════════════════════════════
-        if (action === 'login' && request.method === 'POST') {
-            const { email, password } = request.body;
-            if (!email || !password)
-                return response.status(400).json({ status: 'error', message: 'Введите email и пароль' });
+        // Новое устройство первые 24 часа не может завершать другие сеансы — как в Telegram.
+        // Если аккаунт угнали, угонщик не сможет сразу выкинуть настоящего владельца.
+        const terminateRule = me => {
+            const unlockAt = Number(me.session.created || 0) + NEW_SESSION_LOCK;
+            return { canTerminate: Date.now() >= unlockAt, canTerminateAt: unlockAt };
+        };
 
-            const emailLower = email.trim().toLowerCase();
+        if (action === 'sessionsList') {
+            const me = await authenticate();
+            const list = (await liveSessions(db, me.email))
+                .map(s => ({
+                    sid: s.sid, device: s.device || 'Неизвестное устройство', place: s.place || '', ip: s.ip || '',
+                    created: Number(s.created || 0), lastSeen: Number(s.lastSeen || 0), via: s.via || 'password',
+                    current: s.sid === me.sid,
+                }))
+                .sort((a, b) => (b.current - a.current) || (b.lastSeen - a.lastSeen));
+            return response.status(200).json({ status: 'ok', sessions: list, ...terminateRule(me), now: Date.now() });
+        }
 
-            if (await db('SISMEMBER', 'all_users', emailLower) !== 1)
-                return response.status(401).json({ status: 'error', message: 'Неверный email или пароль' });
-
-            const profile    = parseHash(await db('HGETALL', `profile:${emailLower}`));
-            const storedPass = profile.password;
-            const storedSalt = profile.salt || '';
-            if (!storedPass)
-                return response.status(401).json({ status: 'error', message: 'Неверный email или пароль' });
-
-            const isLegacyBase64 = storedPass.length !== 64 || !/^[0-9a-f]+$/.test(storedPass);
-            let ok = false;
-
-            if (isLegacyBase64) {
-                // Самый старый формат — пароль просто в base64, без хеширования вообще.
-                let legacy;
-                try { legacy = Buffer.from(password).toString('base64'); }
-                catch { legacy = btoa(unescape(encodeURIComponent(password))); }
-                const decoded = storedPass.startsWith('%') ? decodeURIComponent(storedPass) : storedPass;
-                ok = decoded === legacy;
-                if (ok) {
-                    // Мигрируем сразу на SHA-256 С солью, минуя промежуточный этап без соли.
-                    const newSalt = generateSalt();
-                    await db('HSET', `profile:${emailLower}`, 'password', await hashPassword(password, newSalt), 'salt', newSalt);
-                }
-            } else if (storedSalt) {
-                // Текущая схема — SHA-256 с солью.
-                ok = storedPass === await hashPassword(password, storedSalt);
-            } else {
-                // Аккаунт создан ДО внедрения соли — хеш SHA-256, но без неё.
-                // Сверяем по старой формуле и, если совпало, тут же добавляем соль.
-                ok = storedPass === await sha256Hex(password);
-                if (ok) {
-                    const newSalt = generateSalt();
-                    await db('HSET', `profile:${emailLower}`, 'password', await hashPassword(password, newSalt), 'salt', newSalt);
-                }
+        if (action === 'sessionTerminate' && request.method === 'POST') {
+            const me = await authenticate();
+            const { sid } = readBody(request);
+            if (!sid) return response.status(400).json({ status: 'error', message: 'Не указан сеанс' });
+            if (sid !== me.sid) {
+                const rule = terminateRule(me);
+                if (!rule.canTerminate)
+                    return response.status(403).json({ status: 'error', code: 'too_new', ...rule,
+                        message: 'С нового устройства нельзя завершать другие сеансы первые 24 часа после входа.' });
+                const target = parseHash(await db('HGETALL', `sess:${sid}`));
+                if (target.email !== me.email) return response.status(404).json({ status: 'error', message: 'Сеанс уже завершён' });
             }
+            await endSession(db, me.email, sid);
+            return response.status(200).json({ status: 'ok' });
+        }
 
-            if (!ok)
-                return response.status(401).json({ status: 'error', message: 'Неверный email или пароль' });
+        if (action === 'sessionTerminateOthers' && request.method === 'POST') {
+            const me = await authenticate();
+            const rule = terminateRule(me);
+            if (!rule.canTerminate)
+                return response.status(403).json({ status: 'error', code: 'too_new', ...rule,
+                    message: 'С нового устройства нельзя завершать другие сеансы первые 24 часа после входа.' });
+            let ended = 0;
+            for (const s of await liveSessions(db, me.email)) {
+                if (s.sid !== me.sid) { await endSession(db, me.email, s.sid); ended++; }
+            }
+            return response.status(200).json({ status: 'ok', ended });
+        }
 
-            // userId нужен постоянно (личные комнаты строятся на его основе, а не на
-            // основе email) — бэкфилим на лету для аккаунтов, созданных до этого поля.
-            const userId = profile.userId || await getUserId(db, emailLower);
-
-            const jwtToken = await signToken({ email: emailLower }, env.jwt);
-
-            return response.status(200).json({
-                status: 'ok',
-                token: jwtToken,   // фронт может сохранить, может игнорировать
-                user: {
-                    email:    emailLower,
-                    userId,
-                    name:     profile.name     ?? emailLower,
-                    nickname: profile.nickname ?? '',
-                    avColor:  profile.avColor  ?? 'var(--ge-accent-gradient)',
-                    avImg:    profile.avImg     ?? null,
-                    bio:      profile.bio       ?? '',
-                    pubKey:   profile.pubKey    ?? null, // публичный ключ E2E — фронт сверяет со своим локальным
-                },
-            });
+        if (action === 'logout' && request.method === 'POST') {
+            const me = await authenticate();
+            await endSession(db, me.email, me.sid);
+            return response.status(200).json({ status: 'ok' });
         }
 
         // ══════════════════════════════════════════════════════
@@ -799,11 +1189,23 @@ export default async function handler(request, response) {
         // ══════════════════════════════════════════════════════
         if (action === 'updateProfile' && request.method === 'POST') {
             const jwtEmail   = await tryAuth(request, env.jwt);
-            const emailLower = (jwtEmail ?? user_email ?? '').trim().toLowerCase();
+            const emailLower = (jwtEmail ?? '').trim().toLowerCase();
             if (!emailLower) return response.status(400).json({ status: 'error', message: 'Не указан email' });
 
-            const { name, nickname, avColor, password, avImg, bio, pubKey, e2eBackup } = request.body;
+            const { name, nickname, avColor, password, avImg, bio, pubKey, e2eBackup, pwChallenge, pwCode } = request.body;
             const fields = [];
+
+            // Смена пароля — только с кодом (action=passwordCode): иначе тот, кто завладел
+            // открытым устройством, мог бы сменить пароль и забрать аккаунт.
+            if (password) {
+                const ch = await checkChallenge(db, pwChallenge, 'password', pwCode);
+                if (ch.email !== emailLower) throw Object.assign(new Error('Код устарел. Запросите новый.'), { status: 400 });
+            }
+            if (nickname) {
+                const owner = await db('GET', `nick:${String(nickname).toLowerCase()}`);
+                if (owner && owner !== emailLower)
+                    return response.status(409).json({ status: 'error', message: 'Этот никнейм уже занят' });
+            }
 
             if (name)     fields.push('name',     name);
             if (avColor)  fields.push('avColor',  avColor);
@@ -830,13 +1232,14 @@ export default async function handler(request, response) {
             }
 
             if (fields.length > 0) await db('HSET', `profile:${emailLower}`, ...fields);
+            if (password) await botSend(db, env, emailLower, `🔑 Пароль от вашего аккаунта изменён (${(await authenticate()).session.device}). Если это были не вы — срочно восстановите пароль и завершите чужие сеансы в ⚙ → Устройства.`);
             return response.status(200).json({ status: 'ok' });
         }
 
         // Полное удаление аккаунта — реально стирает данные пользователя (не косметика)
         if (action === 'deleteAccount') {
             const jwtEmail   = await tryAuth(request, env.jwt);
-            const emailLower = (jwtEmail ?? user_email ?? '').trim().toLowerCase();
+            const emailLower = (jwtEmail ?? '').trim().toLowerCase();
             if (!emailLower) return response.status(400).json({ status: 'error', message: 'Не указан email' });
 
             // ВАЖНО: всё, что ниже до финального блока — это best-effort уборка (чужие
@@ -899,6 +1302,13 @@ export default async function handler(request, response) {
                 const minvaSub = await db('HGET', `profile:${emailLower}`, 'minvaSub');
                 if (minvaSub) await db('DEL', `minva_sub:${minvaSub}`);
             } catch {}
+            // Все сеансы и служебный чат GeLink этого аккаунта
+            try {
+                for (const sid of (await db('SMEMBERS', `user_sessions:${emailLower}`)) ?? []) await db('DEL', `sess:${sid}`);
+                await db('DEL', `user_sessions:${emailLower}`);
+                const uid = await db('HGET', `profile:${emailLower}`, 'userId');
+                if (uid) await db('DEL', `room:${botRoomFor(uid)}`);
+            } catch {}
 
             // ── КРИТИЧНАЯ ЧАСТЬ — должна выполниться, что бы ни случилось выше ──
             await db('DEL', `contacts:${emailLower}`);
@@ -921,8 +1331,8 @@ export default async function handler(request, response) {
         //  и человек автоматически станет "не в сети" — отдельно помечать выход
         //  из сети не нужно, TTL делает это сам.
         // ══════════════════════════════════════════════════════
-        if (action === 'heartbeat' && user_email) {
-            const emailLower = user_email.trim().toLowerCase();
+        if (action === 'heartbeat') {
+            const emailLower = await tryAuth(request, env.jwt);
             await db('SET', `last_seen:${emailLower}`, String(Date.now()), 'EX', 40);
             return response.status(200).json({ status: 'ok' });
         }
@@ -930,16 +1340,21 @@ export default async function handler(request, response) {
         // ══════════════════════════════════════════════════════
         //  СОХРАНЕНИЕ ПРОФИЛЯ  — публичный (вызывается после OTP)
         // ══════════════════════════════════════════════════════
-        if (action === 'saveProfile' && user_email && request.method === 'POST') {
+        if (action === 'saveProfile' && request.method === 'POST') {
+            const user_email = await tryAuth(request, env.jwt);
             const { nickname, name, pubKey } = request.body;
             await db('SADD', 'all_users', user_email);
             await db('SADD', `user_rooms:${user_email}`, 'general'); // добавляем в general
             if (name)     await db('HSET', `profile:${user_email}`, 'name', name);
             if (pubKey)   await db('HSET', `profile:${user_email}`, 'pubKey', pubKey);
             if (nickname) {
-                const nickLower = nickname.toLowerCase();
-                await db('HSET', `profile:${user_email}`, 'nickname', nickLower);
-                await db('SET',  `nick:${nickLower}`, user_email);
+                const nickLower = String(nickname).toLowerCase();
+                // Ник можно занять, только если он свободен или уже наш — нельзя забрать чужой
+                const owner = await db('GET', `nick:${nickLower}`);
+                if (!owner || owner === user_email) {
+                    await db('HSET', `profile:${user_email}`, 'nickname', nickLower);
+                    await db('SET',  `nick:${nickLower}`, user_email);
+                }
             }
             return response.status(200).json({ status: 'ok' });
         }
@@ -948,9 +1363,10 @@ export default async function handler(request, response) {
         //  WebRTC СИГНАЛИЗАЦИЯ
         // ══════════════════════════════════════════════════════
         if (action === 'signal' && request.method === 'POST') {
-            const body = request.body;
+            const body = readBody(request);
             const { to } = body;
             if (!to) return response.status(400).json({ status: 'error' });
+            body.from = await tryAuth(request, env.jwt); // нельзя подписаться чужим адресом
             await db('LPUSH', `signal:${to}`, JSON.stringify(body));
             await db('EXPIRE', `signal:${to}`, 60);
             return response.status(200).json({ status: 'ok' });
@@ -958,8 +1374,7 @@ export default async function handler(request, response) {
 
         if (action === 'getSignals') {
             // email: из JWT если есть, иначе из query (старый фронт)
-            const jwtEmail = await tryAuth(request, env.jwt);
-            const email    = jwtEmail ?? user_email;
+            const email = await tryAuth(request, env.jwt);
             if (!email) return response.status(400).json({ status: 'error', message: 'Не указан email' });
 
             const key     = `signal:${email}`;
@@ -1019,7 +1434,7 @@ export default async function handler(request, response) {
         // (проверяем, что запрашивающий — это тот же email, что и цель запроса).
         if (action === 'getE2EBackup' && request.query.query) {
             const jwtEmail = await tryAuth(request, env.jwt);
-            const requesterEmail = (jwtEmail ?? user_email ?? '').trim().toLowerCase();
+            const requesterEmail = (jwtEmail ?? '').trim().toLowerCase();
             const targetEmail = request.query.query.trim().toLowerCase();
             if (!requesterEmail || requesterEmail !== targetEmail)
                 return response.status(403).json({ status: 'error', message: 'Доступ запрещён' });
@@ -1033,7 +1448,7 @@ export default async function handler(request, response) {
         // ══════════════════════════════════════════════════════
         if (action === 'addContact' && target_email) {
             const jwtEmail   = await tryAuth(request, env.jwt);
-            const emailLower = (jwtEmail ?? user_email ?? '').trim().toLowerCase();
+            const emailLower = (jwtEmail ?? '').trim().toLowerCase();
             if (!emailLower) return response.status(400).json({ status: 'error', message: 'Не указан email' });
 
             if (await db('SISMEMBER', 'all_users', target_email) !== 1)
@@ -1068,7 +1483,7 @@ export default async function handler(request, response) {
         // Список входящих заявок в контакты (для уведомления, "как во ВК")
         if (action === 'getContactRequests') {
             const jwtEmail   = await tryAuth(request, env.jwt);
-            const emailLower = (jwtEmail ?? user_email ?? '').trim().toLowerCase();
+            const emailLower = (jwtEmail ?? '').trim().toLowerCase();
             if (!emailLower) return response.status(400).json({ status: 'error', message: 'Не указан email' });
 
             const raw = await db('HGETALL', `contact_requests:${emailLower}`);
@@ -1084,7 +1499,7 @@ export default async function handler(request, response) {
         // Принять заявку в контакты — только теперь оба становятся видны друг другу
         if (action === 'acceptContactRequest' && target_email) {
             const jwtEmail   = await tryAuth(request, env.jwt);
-            const emailLower = (jwtEmail ?? user_email ?? '').trim().toLowerCase();
+            const emailLower = (jwtEmail ?? '').trim().toLowerCase();
             if (!emailLower) return response.status(400).json({ status: 'error', message: 'Не указан email' });
 
             const hasRequest = await db('HGET', `contact_requests:${emailLower}`, target_email);
@@ -1107,7 +1522,7 @@ export default async function handler(request, response) {
         // Отклонить заявку в контакты — просто удаляем её, диалог не создаётся
         if (action === 'declineContactRequest' && target_email) {
             const jwtEmail   = await tryAuth(request, env.jwt);
-            const emailLower = (jwtEmail ?? user_email ?? '').trim().toLowerCase();
+            const emailLower = (jwtEmail ?? '').trim().toLowerCase();
             if (!emailLower) return response.status(400).json({ status: 'error', message: 'Не указан email' });
 
             await db('HDEL', `contact_requests:${emailLower}`, target_email);
@@ -1120,7 +1535,7 @@ export default async function handler(request, response) {
         // отклонили/контакт удалили заново), а сервер знает актуальное состояние.
         if (action === 'checkPendingInvite' && target_email) {
             const jwtEmail   = await tryAuth(request, env.jwt);
-            const emailLower = (jwtEmail ?? user_email ?? '').trim().toLowerCase();
+            const emailLower = (jwtEmail ?? '').trim().toLowerCase();
             if (!emailLower) return response.status(400).json({ status: 'error', message: 'Не указан email' });
 
             const pending = await db('HGET', `contact_requests:${target_email}`, emailLower);
@@ -1129,7 +1544,7 @@ export default async function handler(request, response) {
 
         if (action === 'removeContact' && target_email) {
             const jwtEmail   = await tryAuth(request, env.jwt);
-            const emailLower = (jwtEmail ?? user_email ?? '').trim().toLowerCase();
+            const emailLower = (jwtEmail ?? '').trim().toLowerCase();
 
             const roomId = await resolvePrivateRoomId(db, emailLower, target_email);
 
@@ -1150,7 +1565,7 @@ export default async function handler(request, response) {
         // Создать группу
         if (action === 'createGroup') {
             const jwtEmail   = await tryAuth(request, env.jwt);
-            const emailLower = (jwtEmail ?? user_email ?? '').trim().toLowerCase();
+            const emailLower = (jwtEmail ?? '').trim().toLowerCase();
             if (!emailLower) return response.status(400).json({ status: 'error', message: 'Не указан email' });
 
             const rawName = (request.query.name ?? '').toString().trim();
@@ -1174,7 +1589,7 @@ export default async function handler(request, response) {
         // Изменить название и/или аватар группы (только владелец) — видно всем участникам
         if (action === 'updateGroupProfile' && request.method === 'POST') {
             const jwtEmail   = await tryAuth(request, env.jwt);
-            const emailLower = (jwtEmail ?? user_email ?? '').trim().toLowerCase();
+            const emailLower = (jwtEmail ?? '').trim().toLowerCase();
             if (!emailLower) return response.status(400).json({ status: 'error', message: 'Не указан email' });
 
             const body = request.body ?? {};
@@ -1212,7 +1627,7 @@ export default async function handler(request, response) {
         // Вступить в группу по ID
         if (action === 'joinGroup' && request.query.groupId) {
             const jwtEmail   = await tryAuth(request, env.jwt);
-            const emailLower = (jwtEmail ?? user_email ?? '').trim().toLowerCase();
+            const emailLower = (jwtEmail ?? '').trim().toLowerCase();
             if (!emailLower) return response.status(400).json({ status: 'error', message: 'Не указан email' });
 
             const groupId = request.query.groupId.toString().trim().toUpperCase();
@@ -1256,7 +1671,7 @@ export default async function handler(request, response) {
         // Информация о группе (название, кол-во участников; owner виден только владельцу)
         if (action === 'getGroupInfo' && request.query.groupId) {
             const jwtEmail   = await tryAuth(request, env.jwt);
-            const emailLower = (jwtEmail ?? user_email ?? '').trim().toLowerCase();
+            const emailLower = (jwtEmail ?? '').trim().toLowerCase();
 
             const groupIdRaw = request.query.groupId.toString().trim();
             const groupId = groupIdRaw.toUpperCase();
@@ -1297,7 +1712,7 @@ export default async function handler(request, response) {
         // mode=all — стереть переписку полностью для обеих сторон (только приватные чаты)
         if (action === 'clearChat' && room) {
             const jwtEmail   = await tryAuth(request, env.jwt);
-            const emailLower = (jwtEmail ?? user_email ?? '').trim().toLowerCase();
+            const emailLower = (jwtEmail ?? '').trim().toLowerCase();
             if (!emailLower) return response.status(400).json({ status: 'error', message: 'Не указан email' });
 
             const mode = (request.query.mode || 'me').toString();
@@ -1318,7 +1733,7 @@ export default async function handler(request, response) {
 
         if (action === 'leaveGroup' && request.query.groupId) {
             const jwtEmail   = await tryAuth(request, env.jwt);
-            const emailLower = (jwtEmail ?? user_email ?? '').trim().toLowerCase();
+            const emailLower = (jwtEmail ?? '').trim().toLowerCase();
             if (!emailLower) return response.status(400).json({ status: 'error', message: 'Не указан email' });
 
             const groupId = request.query.groupId.toString().trim().toUpperCase();
@@ -1343,7 +1758,7 @@ export default async function handler(request, response) {
         // Удалить группу навсегда — только владелец: чистим сообщения, участников, освобождаем ID
         if (action === 'deleteGroup' && request.query.groupId) {
             const jwtEmail   = await tryAuth(request, env.jwt);
-            const emailLower = (jwtEmail ?? user_email ?? '').trim().toLowerCase();
+            const emailLower = (jwtEmail ?? '').trim().toLowerCase();
             if (!emailLower) return response.status(400).json({ status: 'error', message: 'Не указан email' });
 
             const groupId = request.query.groupId.toString().trim().toUpperCase();
@@ -1371,7 +1786,7 @@ export default async function handler(request, response) {
         // новый выдаётся так же, как при создании. Сообщения и участники переносятся.
         if (action === 'changeGroupId' && request.query.groupId) {
             const jwtEmail   = await tryAuth(request, env.jwt);
-            const emailLower = (jwtEmail ?? user_email ?? '').trim().toLowerCase();
+            const emailLower = (jwtEmail ?? '').trim().toLowerCase();
             if (!emailLower) return response.status(400).json({ status: 'error', message: 'Не указан email' });
 
             const oldId = request.query.groupId.toString().trim().toUpperCase();
@@ -1413,7 +1828,11 @@ export default async function handler(request, response) {
         if (request.method === 'POST') {
             const body       = request.body;
             const jwtEmail   = await tryAuth(request, env.jwt);
-            const emailLower = jwtEmail ?? user_email ?? (typeof body === 'object' ? body?.email : null) ?? '';
+            const emailLower = jwtEmail ?? '';
+
+            // В официальный чат GeLink пишет только сервер
+            if (room.startsWith(BOT_ROOM_PREFIX))
+                return response.status(403).json({ status: 'error', message: 'Это служебный чат GeLink — отвечать в него нельзя' });
 
             // Если это приватный чат — отправитель должен уже состоять в этой комнате
             // (т.е. быть реальным контактом собеседника). private-комната добавляется в
@@ -1465,9 +1884,12 @@ export default async function handler(request, response) {
         //  ЗАГРУЗИТЬ СООБЩЕНИЯ + КОМНАТЫ + КОНТАКТЫ
         // ══════════════════════════════════════════════════════
         const jwtEmail   = await tryAuth(request, env.jwt);
-        const emailLower = (jwtEmail ?? user_email ?? '').trim().toLowerCase();
+        const emailLower = (jwtEmail ?? '').trim().toLowerCase();
 
-        let messages = await db('LRANGE', `room:${room}`, 0, 50);
+        // Читать комнату может только её участник (раньше любой мог прочитать любую комнату,
+        // зная её id). Чужие/удалённые комнаты просто отдаются пустыми — интерфейс не ломается.
+        const canRead = room === 'general' || await db('SISMEMBER', `user_rooms:${emailLower}`, room) === 1;
+        let messages = canRead ? await db('LRANGE', `room:${room}`, 0, 50) : [];
         // Расшифровываем сразу после чтения — дальше по коду (фильтр "очистить у
         // себя" ниже, и то, что видит фронт) всё работает с уже привычной,
         // нешифрованной обёрткой (encodeURIComponent от JSON), как и раньше.
@@ -1491,7 +1913,7 @@ export default async function handler(request, response) {
             // Раз мы загружаем сообщения этой комнаты — значит, пользователь её сейчас
             // просматривает. Отмечаем время прочтения и возвращаем отметки всех участников,
             // чтобы отправитель видел двойную галочку, когда получатель прочитал сообщение.
-            await db('HSET', `room_reads:${room}`, emailLower, Date.now());
+            if (canRead) await db('HSET', `room_reads:${room}`, emailLower, Date.now());
 
             const [rawRooms, rawContacts, rawReads, clearedBefore] = await Promise.all([
                 db('SMEMBERS', `user_rooms:${emailLower}`),
@@ -1520,7 +1942,9 @@ export default async function handler(request, response) {
         return response.status(200).json({ messages: { result: messages ?? [] }, rooms, contacts, reads });
 
     } catch (err) {
-        if (err.status === 401) return response.status(401).json({ status: 'error', message: err.message });
+        if (err.status === 401) return response.status(401).json({ status: 'error', code: err.code || 'auth', message: err.message });
+        if (err.status && err.status < 500 || err.status === 502 || err.status === 503)
+            return response.status(err.status).json({ status: 'error', code: err.code, message: err.message });
         console.error('[GeLink API]', err);
         return response.status(500).json({ status: 'error', message: 'Internal server error' });
     }
