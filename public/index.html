@@ -2422,7 +2422,10 @@
                 </div>
                 <div class="ge-field">
                     <label class="ge-label">Повторите пароль</label>
-                    <input type="password" id="pw-new2" class="ge-input-core" placeholder="••••••••" autocomplete="new-password" oninput="geEngine.auth.filterLatinPass(this)" onkeydown="if(event.key==='Enter')geEngine.password.sendCode()">
+                    <div style="position:relative;">
+                        <input type="password" id="pw-new2" class="ge-input-core" placeholder="••••••••" autocomplete="new-password" style="padding-right:44px;" oninput="geEngine.auth.filterLatinPass(this)" onkeydown="if(event.key==='Enter')geEngine.password.sendCode()">
+                        <button type="button" class="ge-eye-btn" onclick="geEngine.auth.toggleEye('pw-new2', this)" tabindex="-1"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+                    </div>
                 </div>
                 <button class="ge-btn-submit" id="pw-send-btn" onclick="geEngine.password.sendCode()">ПОЛУЧИТЬ КОД</button>
             </div>
@@ -5640,7 +5643,7 @@
                         if (composerRow) composerRow.style.display = 'none';
                         if (inviteBar) {
                             inviteBar.classList.remove('ge-hidden');
-                            inviteBar.innerText = 'Официальный чат GeLink: коды для входа и смены пароля, уведомления о входах, смене пароля и Minva. Отвечать сюда не нужно.';
+                            inviteBar.innerText = 'Официальный чат GeLink: коды для входа, уведомления о входах, смене пароля и Minva. Отвечать сюда не нужно.';
                             inviteBar.disabled = true;
                             inviteBar.style.opacity = '1';
                             inviteBar.classList.add('ge-bot-readonly-bar');
@@ -7678,7 +7681,7 @@
                         const data = await geEngine.auth._api('passwordCode', { password: p1 });
                         this._challenge = data.challenge; this._pass = p1;
                         document.getElementById('pw-otp-hint').innerText = data.email
-                            ? `Код отправлен на ${data.email} и в чат «GeLink».`
+                            ? `Код отправлен на почту ${data.email}.`
                             : 'Код отправлен в чат «GeLink».';
                         document.getElementById('pw-fields').classList.add('ge-hidden');
                         document.getElementById('pw-otp-section').classList.remove('ge-hidden');
