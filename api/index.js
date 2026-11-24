@@ -1403,7 +1403,7 @@ export default async function handler(request, response) {
             }
 
             if (fields.length > 0) await db('HSET', `profile:${emailLower}`, ...fields);
-            if (password) await botSend(db, env, emailLower, `🔑 Пароль от вашего аккаунта изменён (${(await authenticate()).session.device}). Если это были не вы — нажмите «Забыли пароль?» на экране входа и задайте новый пароль по коду из почты: после этого из аккаунта выйдут ВСЕ устройства, в том числе чужие, ждать ничего не нужно.`);
+            if (password) await botSend(db, env, emailLower, `🔑 Пароль от вашего аккаунта изменён (${(await authenticate()).session.device}). Если это были не вы — смените пароль в ⚙ → Конфиденциальность → Пароль и завершите чужой сеанс в ⚙ → Конфиденциальность → Устройства.`);
             return response.status(200).json({ status: 'ok' });
         }
 
