@@ -1076,7 +1076,7 @@ export default async function handler(request, response) {
             await db('SREM', 'deleted_users', emailLower);
 
             const sid = await createSession(db, emailLower, request, 'register');
-            await botSend(db, env, emailLower, '👋 Добро пожаловать в GeLink! Это официальный чат GeLink: сюда приходят коды входа и уведомления о входе с новых устройств. Список устройств — в ⚙ → Конфиденциальность → Устройства.');
+            await botSend(db, env, emailLower, '👋 Добро пожаловать в GeLink! Это официальный чат GeLink. Сюда приходят:\n🔐 коды для входа и для смены пароля;\n✅ уведомления о каждом новом входе в аккаунт;\n🔑 сообщения о смене пароля;\n🔗 сообщения о привязке и отвязке Minva.\n\nНикому не сообщайте коды из этого чата. Где открыт ваш аккаунт — в ⚙ → Конфиденциальность → Устройства.');
             const profile = parseHash(await db('HGETALL', `profile:${emailLower}`));
             return response.status(200).json({
                 status: 'ok', userId, token: await signToken({ email: emailLower, sid }, env.jwt),
@@ -1891,6 +1891,9 @@ export default async function handler(request, response) {
                 if (!room.startsWith('private-')) {
                     return response.status(403).json({ status: 'error', message: 'Полная очистка доступна только для личных чатов' });
                 }
+                // Стереть переписку у обоих может только участник этого чата (раньше хватало знать id комнаты)
+                if (await db('SISMEMBER', `user_rooms:${emailLower}`, room) !== 1)
+                    return response.status(403).json({ status: 'error', message: 'Это не ваш чат' });
                 await db('DEL', `room:${room}`);
                 await db('DEL', `room_cleared:${room}`);
                 return response.status(200).json({ status: 'ok', mode: 'all' });
