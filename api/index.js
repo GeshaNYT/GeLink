@@ -467,6 +467,18 @@ async function botSend(db, env, email, text, extra = {}) {
     await db('LTRIM', `room:${room}`, 0, 199);
 }
 
+// Код входа: на почту (если она настоящая) и в чат GeLink, если аккаунт уже открыт на другом устройстве
+async function sendLoginCode(db, env, email, profile, code, request) {
+    const hasMail = !email.endsWith('@users.minva');
+    const app = (await liveSessions(db, email)).length > 0;
+    if (app) {
+        const place = requestPlace(request);
+        await botSend(db, env, email, `🔐 Код для входа в GeLink: ${code}\n\nКто-то (надеемся, вы) входит в аккаунт: ${describeDevice(getHeader(request, 'user-agent'))}${place ? ', ' + place : ''}.\nНикому не сообщайте этот код. Если это не вы — смените пароль в ⚙ → Конфиденциальность → Пароль.`, { loginCode: true });
+    }
+    if (hasMail) await sendCodeEmail(email, profile.name, code);
+    return { app, email: hasMail ? maskEmail(email) : null };
+}
+
 function fmtWhen(ms) {
     try {
         return new Date(Number(ms)).toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }) + ' (UTC)';
@@ -574,6 +586,26 @@ async function privatePeerEmail(db, room, myEmail) {
     return otherUid ? await db('GET', `id_email:${otherUid}`) : null;
 }
 
+// ── Очистка того, что пользователи пишут о себе (имя, аватар, цвет) ──
+// Эти значения показываются другим людям прямо в разметке страницы. Без проверки в имени или
+// «ссылке на аватар» можно было спрятать код, который выполнится у всех, кто откроет чат.
+function safeDec(v) { try { return decodeURIComponent(String(v)); } catch { return String(v); } }
+function cleanName(v, max = 64) { return safeDec(v ?? '').replace(/[<>"`\\\u0000-\u001f]/g, '').trim().slice(0, max); }
+const IMG_RE = /^data:image\/(png|jpe?g|gif|webp);base64,[A-Za-z0-9+/=]+$/;
+function cleanImg(v) { if (!v) return null; const d = safeDec(v); return IMG_RE.test(d) ? d : null; }
+const COLOR_RE = /^(#[0-9a-f]{3,8}|var\(--ge-accent-gradient\)|linear-gradient\(\d{1,3}deg(, ?#[0-9a-f]{3,8}( \d{1,3}%)?){2,4}\))$/i;
+function cleanColor(v) { const d = safeDec(v ?? ''); return COLOR_RE.test(d) ? d : 'var(--ge-accent-gradient)'; }
+const NICK_RE = /^[a-z0-9_]{3,20}$/;
+const EMAIL_RE = /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/;
+// Применяем и при выдаче — на случай, если что-то такое уже лежит в базе
+function cleanProfileOut(p) {
+    if (!p) return p;
+    if (p.name !== undefined) p.name = cleanName(p.name) || 'Пользователь';
+    if (p.avImg !== undefined) { const img = cleanImg(p.avImg); if (img) p.avImg = img; else delete p.avImg; }
+    if (p.avColor !== undefined) p.avColor = cleanColor(p.avColor);
+    return p;
+}
+
 // Профиль для чужих глаз: без пароля и служебных полей; кого владелец заблокировал —
 // тот не видит его аватарку, «о себе» и что он в сети
 async function publicProfile(db, email, viewer) {
@@ -586,17 +618,17 @@ async function publicProfile(db, email, viewer) {
         delete profile.bio;
         profile.online = false;
     }
-    return profile;
+    return cleanProfileOut(profile);
 }
 
 // Всё, что фронт сохраняет после входа (как в старом ответе action=login)
 function publicUser(email, userId, profile) {
     return {
         email, userId,
-        name:     profile.name     ?? email,
+        name:     profile.name ? cleanName(profile.name) : email,
         nickname: profile.nickname ?? '',
-        avColor:  profile.avColor  ?? 'var(--ge-accent-gradient)',
-        avImg:    profile.avImg    ?? null,
+        avColor:  cleanColor(profile.avColor),
+        avImg:    cleanImg(profile.avImg),
         bio:      profile.bio      ?? '',
         pubKey:   profile.pubKey   ?? null,
     };
@@ -853,6 +885,11 @@ export default async function handler(request, response) {
                 if (current && current !== sub) return fail('already_linked');
                 await db('SET', `minva_sub:${sub}`, flow.email);
                 await db('HSET', `profile:${flow.email}`, 'minvaSub', sub);
+                if (current !== sub) {
+                    const where = [describeDevice(getHeader(request, 'user-agent')), requestPlace(request)].filter(Boolean).join(', ');
+                    const who = info.preferred_username || info.name || '';
+                    await botSend(db, env, flow.email, `🔗 К вашему аккаунту привязан Minva${who ? ' (' + who + ')' : ''}: ${where}, ${fmtWhen(Date.now())}.\nТеперь в GeLink можно входить через этот аккаунт Minva. Если это были не вы — отвяжите его в ⚙ → Конфиденциальность → Вход через Minva и смените пароль там же, в разделе «Пароль».`).catch(() => {});
+                }
                 return redirectTo(response, '/?minva=linked', minvaCookie(request, '', 0));
             }
 
@@ -932,9 +969,13 @@ export default async function handler(request, response) {
             if (!email) return response.status(401).json({ status: 'error', message: 'Войдите в GeLink заново' });
             const [sub, only] = await Promise.all([db('HGET', `profile:${email}`, 'minvaSub'), db('HGET', `profile:${email}`, 'minvaOnly')]);
             if (only === '1')
-                return response.status(400).json({ status: 'error', message: 'Сначала задайте пароль в профиле — сейчас Minva единственный способ войти в аккаунт.' });
+                return response.status(400).json({ status: 'error', message: 'Сначала задайте пароль в ⚙ → Конфиденциальность → Пароль — сейчас Minva единственный способ войти в аккаунт.' });
             if (sub) await db('DEL', `minva_sub:${sub}`);
             await db('HDEL', `profile:${email}`, 'minvaSub');
+            if (sub) {
+                const where = [describeDevice(getHeader(request, 'user-agent')), requestPlace(request)].filter(Boolean).join(', ');
+                await botSend(db, env, email, `🔓 Minva отвязан от вашего аккаунта: ${where}, ${fmtWhen(Date.now())}.\nВходить через Minva больше нельзя. Если это были не вы — смените пароль (⚙ → Конфиденциальность → Пароль) и проверьте «Устройства».`).catch(() => {});
+            }
             return response.status(200).json({ status: 'ok' });
         }
 
@@ -982,7 +1023,7 @@ export default async function handler(request, response) {
                 return response.status(400).json({ status: 'error', message: 'Заполните все поля' });
             const emailLower = String(email).trim().toLowerCase();
             const nickLower  = String(nickname).trim().toLowerCase();
-            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailLower))
+            if (!EMAIL_RE.test(emailLower))
                 return response.status(400).json({ status: 'error', message: 'Проверьте адрес почты' });
             if (!/^[a-z0-9_]{3,20}$/.test(nickLower))
                 return response.status(400).json({ status: 'error', message: 'Никнейм: 3–20 символов, латиница, цифры, подчёркивание' });
@@ -996,7 +1037,7 @@ export default async function handler(request, response) {
             // Пароль в заявке храним уже захешированным — открытым он нигде не лежит
             const salt = generateSalt();
             const { id, code } = await createChallenge(db, 'register', emailLower, {
-                name: String(name).slice(0, 64), nickname: nickLower, avColor: avColor || 'var(--ge-accent-gradient)',
+                name: cleanName(name) || nickLower, nickname: nickLower, avColor: cleanColor(avColor),
                 passHash: await hashPassword(String(password), salt), salt,
             });
             await sendCodeEmail(emailLower, name, code);
@@ -1058,35 +1099,22 @@ export default async function handler(request, response) {
             const { id, code } = await createChallenge(db, 'login', emailLower, {
                 device: describeDevice(getHeader(request, 'user-agent')), place: requestPlace(request),
             });
-            const others = await liveSessions(db, emailLower);
-            const canEmail = !emailLower.endsWith('@users.minva');
-            let sentTo;
-            if (others.length) {
-                // Как в Telegram: если вы уже где-то вошли, код приходит туда — в чат GeLink
-                await botSend(db, env, emailLower, `🔐 Код для входа в GeLink: ${code}\n\nКто-то (надеемся, вы) входит в аккаунт: ${describeDevice(getHeader(request, 'user-agent'))}${requestPlace(request) ? ', ' + requestPlace(request) : ''}.\nНикому не сообщайте этот код. Если это не вы — смените пароль.`, { loginCode: true });
-                sentTo = 'app';
-            } else if (canEmail) {
-                await sendCodeEmail(emailLower, profile.name, code);
-                sentTo = 'email';
-            } else {
+            // Код уходит сразу и на почту, и в чат GeLink (если аккаунт открыт ещё где-то)
+            const sent = await sendLoginCode(db, env, emailLower, profile, code, request);
+            if (!sent.email && !sent.app)
                 return response.status(400).json({ status: 'error', message: 'Этот аккаунт создан через Minva — войдите кнопкой «Войти через Minva».' });
-            }
-            return response.status(200).json({ status: 'code_required', challenge: id, sentTo, canEmail, email: canEmail ? maskEmail(emailLower) : null });
+            return response.status(200).json({ status: 'code_required', challenge: id, ...sent });
         }
 
         // «Отправить код на почту» / «Отправить ещё раз»
         if (action === 'loginResend' && request.method === 'POST') {
-            const { challenge, channel } = readBody(request);
+            const { challenge } = readBody(request);
             const ch = await loadChallenge(db, challenge, 'login');
             if (!ch) return response.status(400).json({ status: 'error', message: 'Вход устарел. Введите пароль ещё раз.' });
             const code = await reissueChallenge(db, challenge, ch);
-            if (channel === 'email' && !ch.email.endsWith('@users.minva')) {
-                const profile = parseHash(await db('HGETALL', `profile:${ch.email}`));
-                await sendCodeEmail(ch.email, profile.name, code);
-                return response.status(200).json({ status: 'ok', sentTo: 'email', email: maskEmail(ch.email) });
-            }
-            await botSend(db, env, ch.email, `🔐 Код для входа в GeLink: ${code}\n\nНикому не сообщайте этот код.`, { loginCode: true });
-            return response.status(200).json({ status: 'ok', sentTo: 'app' });
+            const profile = parseHash(await db('HGETALL', `profile:${ch.email}`));
+            const sent = await sendLoginCode(db, env, ch.email, profile, code, request);
+            return response.status(200).json({ status: 'ok', ...sent });
         }
 
         // ── ВХОД, шаг 2: код верный — создаём сеанс ──
@@ -1100,7 +1128,7 @@ export default async function handler(request, response) {
             const userId = profile.userId || await getUserId(db, emailLower);
             const sid = await createSession(db, emailLower, request, 'password');
             const sess = parseHash(await db('HGETALL', `sess:${sid}`));
-            await botSend(db, env, emailLower, `✅ Новый вход в аккаунт: ${sess.device}${sess.place ? ', ' + sess.place : ''}, ${fmtWhen(sess.created)}.\nЕсли это были не вы — завершите этот сеанс в ⚙ → Конфиденциальность → Устройства и смените пароль.`);
+            await botSend(db, env, emailLower, `✅ Новый вход в аккаунт: ${sess.device}${sess.place ? ', ' + sess.place : ''}, ${fmtWhen(sess.created)}.\nЕсли это были не вы — завершите этот сеанс в ⚙ → Конфиденциальность → Устройства и смените пароль в ⚙ → Конфиденциальность → Пароль.`);
             return response.status(200).json({
                 status: 'ok', token: await signToken({ email: emailLower, sid }, env.jwt),
                 user: publicUser(emailLower, userId, profile),
@@ -1154,12 +1182,11 @@ export default async function handler(request, response) {
             if (newPassword && await checkPassword(db, me.email, profile, String(newPassword)))
                 return response.status(400).json({ status: 'error', code: 'same_password', message: 'Новый пароль совпадает с текущим. Придумайте другой.' });
             const { id, code } = await createChallenge(db, 'password', me.email);
-            if (me.email.endsWith('@users.minva')) {
-                await botSend(db, env, me.email, `🔐 Код для смены пароля: ${code}\n\nНикому не сообщайте этот код.`, { loginCode: true });
-                return response.status(200).json({ status: 'ok', challenge: id, sentTo: 'app' });
-            }
-            await sendCodeEmail(me.email, profile.name, code);
-            return response.status(200).json({ status: 'ok', challenge: id, sentTo: 'email', email: maskEmail(me.email) });
+            // Код — и в чат GeLink, и на почту (если она настоящая)
+            await botSend(db, env, me.email, `🔐 Код для смены пароля: ${code}\n\nНикому не сообщайте этот код. Если пароль меняете не вы — завершите чужие сеансы в ⚙ → Конфиденциальность → Устройства.`, { loginCode: true });
+            const hasMail = !me.email.endsWith('@users.minva');
+            if (hasMail) await sendCodeEmail(me.email, profile.name, code);
+            return response.status(200).json({ status: 'ok', challenge: id, app: true, email: hasMail ? maskEmail(me.email) : null });
         }
 
         // ══════════════════════════════════════════════════════
@@ -1188,8 +1215,8 @@ export default async function handler(request, response) {
             const users = [];
             for (const e of emails) {
                 const p = parseHash(await db('HGETALL', `profile:${e}`));
-                users.push({ email: e, name: p.name || e, nickname: p.nickname || '', avImg: p.avImg || null,
-                    avColor: p.avColor || 'var(--ge-accent-gradient)', deleted: !p.name && !p.nickname });
+                users.push({ email: e, name: p.name ? cleanName(p.name) : e, nickname: p.nickname || '', avImg: cleanImg(p.avImg),
+                    avColor: cleanColor(p.avColor), deleted: !p.name && !p.nickname });
             }
             return response.status(200).json({ status: 'ok', users });
         }
@@ -1339,14 +1366,18 @@ export default async function handler(request, response) {
                 const ch = await checkChallenge(db, pwChallenge, 'password', pwCode);
                 if (ch.email !== emailLower) throw Object.assign(new Error('Код устарел. Запросите новый.'), { status: 400 });
             }
+            if (nickname && !NICK_RE.test(String(nickname).toLowerCase()))
+                return response.status(400).json({ status: 'error', message: 'Никнейм: 3–20 символов, латиница, цифры, подчёркивание' });
+            if (avImg && !cleanImg(avImg))
+                return response.status(400).json({ status: 'error', message: 'Аватар должен быть картинкой (PNG, JPG, GIF или WebP)' });
             if (nickname) {
                 const owner = await db('GET', `nick:${String(nickname).toLowerCase()}`);
                 if (owner && owner !== emailLower)
                     return response.status(409).json({ status: 'error', message: 'Этот никнейм уже занят' });
             }
 
-            if (name)     fields.push('name',     name);
-            if (avColor)  fields.push('avColor',  avColor);
+            if (name && cleanName(name)) fields.push('name', cleanName(name));
+            if (avColor)  fields.push('avColor',  cleanColor(avColor));
             if (pubKey)   fields.push('pubKey',   pubKey); // публичный ключ E2E-шифрования (можно переиздавать)
             if (e2eBackup) fields.push('e2eBackup', e2eBackup); // резервная копия приватного ключа, зашифрованная паролем — сервер расшифровать её не может
             if (password) {
@@ -1365,7 +1396,7 @@ export default async function handler(request, response) {
             }
 
             if (avImg !== undefined) {
-                if (avImg) fields.push('avImg', avImg);
+                if (avImg) fields.push('avImg', cleanImg(avImg));
                 else await db('HDEL', `profile:${emailLower}`, 'avImg');
             }
 
@@ -1485,9 +1516,9 @@ export default async function handler(request, response) {
             const { nickname, name, pubKey } = request.body;
             await db('SADD', 'all_users', user_email);
             await db('SADD', `user_rooms:${user_email}`, 'general'); // добавляем в general
-            if (name)     await db('HSET', `profile:${user_email}`, 'name', name);
+            if (name && cleanName(name)) await db('HSET', `profile:${user_email}`, 'name', cleanName(name));
             if (pubKey)   await db('HSET', `profile:${user_email}`, 'pubKey', pubKey);
-            if (nickname) {
+            if (nickname && NICK_RE.test(String(nickname).toLowerCase())) {
                 const nickLower = String(nickname).toLowerCase();
                 // Ник можно занять, только если он свободен или уже наш — нельзя забрать чужой
                 const owner = await db('GET', `nick:${nickLower}`);
@@ -1626,7 +1657,7 @@ export default async function handler(request, response) {
             const map = parseHash(raw);
             const requests = await Promise.all(Object.entries(map).map(async ([fromEmail, ts]) => {
                 const name = await db('HGET', `profile:${fromEmail}`, 'name');
-                return { email: fromEmail, name: name || fromEmail, ts: Number(ts) };
+                return { email: fromEmail, name: (name && cleanName(name)) || fromEmail, ts: Number(ts) };
             }));
             requests.sort((a, b) => b.ts - a.ts);
             return response.status(200).json({ status: 'ok', requests });
@@ -1706,7 +1737,8 @@ export default async function handler(request, response) {
 
             const rawName = (request.query.name ?? '').toString().trim();
             if (!rawName) return response.status(400).json({ status: 'error', message: 'Укажите название группы' });
-            const name = rawName.slice(0, 60);
+            const name = cleanName(rawName, 60);
+            if (!name) return response.status(400).json({ status: 'error', message: 'Укажите название группы' });
 
             const groupId = await generateUniqueGroupId(db);
 
@@ -1742,11 +1774,13 @@ export default async function handler(request, response) {
             if (owner !== emailLower) return response.status(403).json({ status: 'error', message: 'Изменить группу может только владелец' });
 
             const fields = [];
-            if (typeof body.name === 'string' && body.name.trim()) {
-                fields.push('name', body.name.trim().slice(0, 60));
+            if (typeof body.name === 'string' && cleanName(body.name, 60)) {
+                fields.push('name', cleanName(body.name, 60));
             }
+            if (body.avImg && !cleanImg(body.avImg))
+                return response.status(400).json({ status: 'error', message: 'Аватар группы должен быть картинкой' });
             if (body.avImg !== undefined) {
-                if (body.avImg) fields.push('avImg', body.avImg);
+                if (body.avImg) fields.push('avImg', cleanImg(body.avImg));
                 else await db('HDEL', `group:${groupId}`, 'avImg');
             }
             if (fields.length > 0) await db('HSET', `group:${groupId}`, ...fields);
@@ -1755,8 +1789,8 @@ export default async function handler(request, response) {
             return response.status(200).json({
                 status: 'ok',
                 groupId,
-                name: info.name,
-                avImg: info.avImg || null,
+                name: cleanName(info.name, 60) || 'Группа',
+                avImg: cleanImg(info.avImg),
             });
         }
 
@@ -1801,7 +1835,7 @@ export default async function handler(request, response) {
             }
 
             const memberCount = await db('SCARD', `group_members:${groupId}`);
-            return response.status(200).json({ status: 'ok', groupId, name: info.name, avImg: info.avImg || null, memberCount });
+            return response.status(200).json({ status: 'ok', groupId, name: cleanName(info.name, 60) || 'Группа', avImg: cleanImg(info.avImg), memberCount });
         }
 
         // Информация о группе (название, кол-во участников; owner виден только владельцу)
@@ -1836,10 +1870,10 @@ export default async function handler(request, response) {
             return response.status(200).json({
                 status: 'ok',
                 groupId,
-                name: info.name,
+                name: cleanName(info.name, 60) || 'Группа',
                 memberCount,
                 isOwner,
-                avImg: info.avImg || null,
+                avImg: cleanImg(info.avImg),
             });
         }
 
@@ -1955,16 +1989,18 @@ export default async function handler(request, response) {
             }));
 
             const memberCount = await db('SCARD', `group_members:${newId}`);
-            return response.status(200).json({ status: 'ok', oldId, newId, name, avImg: avImg || null, memberCount });
+            return response.status(200).json({ status: 'ok', oldId, newId, name: cleanName(name, 60) || 'Группа', avImg: cleanImg(avImg), memberCount });
         }
 
         // ══════════════════════════════════════════════════════
         //  ОТПРАВИТЬ СООБЩЕНИЕ
         // ══════════════════════════════════════════════════════
         if (request.method === 'POST') {
-            const body       = request.body;
             const jwtEmail   = await tryAuth(request, env.jwt);
             const emailLower = jwtEmail ?? '';
+            // Писать может только вошедший пользователь (общая проверка выше это уже гарантирует;
+            // здесь — на случай, если её когда-нибудь поменяют: без почты проверки лички пропускаются).
+            if (!emailLower) return response.status(401).json({ status: 'error', code: 'auth', message: 'Войдите в GeLink заново' });
 
             // В официальный чат GeLink пишет только сервер
             if (room.startsWith(BOT_ROOM_PREFIX))
@@ -1997,10 +2033,24 @@ export default async function handler(request, response) {
                 if (!groupExists) {
                     return response.status(410).json({ status: 'error', message: 'Группа была удалена', groupDeleted: true });
                 }
+                // Писать в группу может только её участник (раньше хватало знать id группы)
+                if (await db('SISMEMBER', `group_members:${room}`, emailLower) !== 1)
+                    return response.status(403).json({ status: 'error', code: 'not_member', message: 'Вы не участник этой группы' });
             }
 
             // body может прийти как строка (старый фронт) или объект (новый)
-            const bodyStr = typeof body === 'string' ? body : JSON.stringify(body);
+            let msg;
+            try { msg = typeof request.body === 'string' ? JSON.parse(request.body) : request.body; } catch { msg = null; }
+            if (!msg || typeof msg !== 'object' || Array.isArray(msg))
+                return response.status(400).json({ status: 'error', message: 'Неверное сообщение' });
+            // Отправитель — всегда тот, кто вошёл. Раньше имя и почту присылал сам браузер, и можно было
+            // написать от чужого имени или под видом официального бота GeLink (галочка, «код входа»).
+            msg.email = emailLower;
+            const senderName = await db('HGET', `profile:${emailLower}`, 'name');
+            if (senderName) msg.username = cleanName(senderName) || msg.username;
+            delete msg.bot; delete msg.loginCode;
+            if (msg.type === 'system') delete msg.type;
+            const bodyStr = JSON.stringify(msg);
             await db('LPUSH', `room:${room}`, await encryptForStorage(bodyStr, env));
 
             // Добавляем в all_users/user_rooms ТОЛЬКО если профиль реально существует.
@@ -2030,7 +2080,11 @@ export default async function handler(request, response) {
         // Читать комнату может только её участник (раньше любой мог прочитать любую комнату,
         // зная её id). Чужие/удалённые комнаты просто отдаются пустыми — интерфейс не ломается.
         const canRead = room === 'general' || await db('SISMEMBER', `user_rooms:${emailLower}`, room) === 1;
-        let messages = canRead ? await db('LRANGE', `room:${room}`, 0, 50) : [];
+        // peek=1 — только последнее сообщение и без отметки «прочитано» (для сортировки списка чатов);
+        // noread=1 — сообщения нужны, но вкладка скрыта, поэтому не отмечаем их прочитанными.
+        const peek = request.query.peek === '1';
+        const markRead = !peek && request.query.noread !== '1';
+        let messages = canRead ? await db('LRANGE', `room:${room}`, 0, peek ? 9 : 50) : [];
         // Расшифровываем сразу после чтения — дальше по коду (фильтр "очистить у
         // себя" ниже, и то, что видит фронт) всё работает с уже привычной,
         // нешифрованной обёрткой (encodeURIComponent от JSON), как и раньше.
@@ -2054,7 +2108,7 @@ export default async function handler(request, response) {
             // Раз мы загружаем сообщения этой комнаты — значит, пользователь её сейчас
             // просматривает. Отмечаем время прочтения и возвращаем отметки всех участников,
             // чтобы отправитель видел двойную галочку, когда получатель прочитал сообщение.
-            if (canRead) await db('HSET', `room_reads:${room}`, emailLower, Date.now());
+            if (canRead && markRead) await db('HSET', `room_reads:${room}`, emailLower, Date.now());
 
             const [rawRooms, rawContacts, rawReads, clearedBefore] = await Promise.all([
                 db('SMEMBERS', `user_rooms:${emailLower}`),
@@ -2077,8 +2131,10 @@ export default async function handler(request, response) {
                     } catch { return true; }
                 });
             }
+            if (peek) messages = (messages ?? []).slice(0, 1);
             }
         }
+        if (peek && !emailLower) messages = (messages ?? []).slice(0, 1);
 
         return response.status(200).json({ messages: { result: messages ?? [] }, rooms, contacts, reads });
 
