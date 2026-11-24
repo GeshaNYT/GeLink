@@ -8129,10 +8129,23 @@
 
             // Enter — отправить (на компьютере), Shift+Enter — новая строка.
             // На телефоне Enter переносит строку, отправка — кнопкой, как в Telegram.
-            const mainInput = document.getElementById('ge-main-input');
+            let mainInput = document.getElementById('ge-main-input');
             const isTouch = matchMedia('(hover: none) and (pointer: coarse)').matches;
+            if (isTouch && mainInput.tagName === 'TEXTAREA') {
+                // На телефоне оставляем обычное однострочное поле, как было раньше: с многострочным
+                // клавиатура Gboard в приложении урезала свою панель. Многострочное — только на компьютере.
+                const inp = document.createElement('input');
+                inp.type = 'text';
+                inp.id = mainInput.id;
+                inp.className = mainInput.className;
+                inp.placeholder = mainInput.placeholder;
+                inp.setAttribute('autocapitalize', 'sentences');
+                mainInput.replaceWith(inp);
+                mainInput = inp;
+            }
             mainInput.addEventListener('keydown', (e) => {
-                if (e.key !== 'Enter' || e.shiftKey || e.isComposing || isTouch) return;
+                if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
+                if (isTouch && mainInput.tagName === 'TEXTAREA') return;
                 e.preventDefault();
                 if (geEngine.media._recording) geEngine.media._stopAndSend();
                 else geEngine.chat.broadcast();
