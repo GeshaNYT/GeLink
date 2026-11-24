@@ -8,7 +8,7 @@
     <link rel="icon" href="/favicon-16.png" type="image/png" sizes="16x16">
     <link rel="icon" href="/favicon-192.png" type="image/png" sizes="192x192">
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-    <title>GeLink Enterprise Messenger | Version 3.1 Bridge</title>
+    <title>GeLink Enterprise Messenger | Version 3.2 Shield</title>
     
     <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
     <script type="text/javascript">
@@ -337,7 +337,8 @@
         .ge-dev-info { flex: 1; min-width: 0; }
         .ge-dev-name { font-weight: 600; font-size: 14px; color: var(--text-primary); }
         .ge-dev-meta { font-size: 12px; color: var(--text-secondary); margin-top: 2px; line-height: 1.4; }
-        .ge-dev-online { color: var(--ge-primary); }
+        .ge-dev-online { color: #2ecc71; font-weight: 600; }
+        .ge-dev-name, .ge-dev-info .ge-dev-meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .ge-dev-end { flex-shrink: 0; border: none; background: none; color: var(--ge-error); font-size: 13px; font-weight: 600; cursor: pointer; padding: 6px 8px; border-radius: 8px; }
         .ge-dev-end:hover { background: rgba(255,64,80,.1); }
         .ge-dev-end:disabled { color: var(--text-secondary); cursor: default; background: none; opacity: .6; }
@@ -2556,7 +2557,7 @@
     <section id="ge-auth-layer" class="ge-auth-overlay">
         <div class="ge-auth-container">
             <div class="ge-brand-logo">GeLink</div>
-            <p class="ge-auth-tagline">Профессиональный мессенджер v3.1</p>
+            <p class="ge-auth-tagline">Профессиональный мессенджер v3.2</p>
             
             <div class="ge-auth-tabs">
                 <button id="tab-login" class="ge-auth-tab active" onclick="geEngine.auth.switch('login')">Вход</button>
@@ -7836,24 +7837,29 @@
                         return '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>';
                     return '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/></svg>';
                 },
-                _ago(ts, now) {
-                    const min = Math.floor((now - ts) / 60000);
-                    if (min < 2) return '<span class="ge-dev-online">в сети</span>';
-                    if (min < 60) return `${min} мин назад`;
+                // Статус — одной фразой в одном стиле для всех устройств
+                _status(s, now) {
+                    if (s.current) return '<span class="ge-dev-online">● Это устройство</span>';
+                    const min = Math.floor((now - s.lastSeen) / 60000);
+                    if (min < 2) return '<span class="ge-dev-online">● В сети</span>';
+                    if (min < 60) return `Был в сети ${min} мин назад`;
                     const h = Math.floor(min / 60);
-                    if (h < 24) return `${h} ч назад`;
-                    return new Date(ts).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+                    if (h < 24) return `Был в сети ${h} ч назад`;
+                    return 'Был в сети ' + new Date(s.lastSeen).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
                 },
                 _item(s, now, canEnd) {
-                    const where = [s.place, s.via === 'minva' ? 'вход через Minva' : ''].filter(Boolean).join(' · ');
-                    const since = new Date(s.created).toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
-                    return `<div class="ge-dev-item">
+                    // «GeLink для ПК · Windows» → название крупно, система — во второй строке вместе с городом
+                    const [app, os] = String(s.device || 'Неизвестное устройство').split(' · ');
+                    const second = [os, s.place, s.via === 'minva' ? 'через Minva' : ''].filter(Boolean).join(' · ');
+                    const since = new Date(s.created).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+                    return `<div class="ge-dev-item" title="Вход: ${since}">
                         <div class="ge-dev-icon">${this._icon(s.device)}</div>
                         <div class="ge-dev-info">
-                            <div class="ge-dev-name">${escapeHtml(s.device)}</div>
-                            <div class="ge-dev-meta">${where ? escapeHtml(where) + '<br>' : ''}${s.current ? '<span class="ge-dev-online">это устройство</span>' : this._ago(s.lastSeen, now)} · вход ${since}</div>
+                            <div class="ge-dev-name">${escapeHtml(app)}</div>
+                            ${second ? `<div class="ge-dev-meta">${escapeHtml(second)}</div>` : ''}
+                            <div class="ge-dev-meta">${this._status(s, now)}</div>
                         </div>
-                        ${s.current ? '' : `<button class="ge-dev-end" ${canEnd ? '' : 'disabled'} onclick="geEngine.devices.terminate('${s.sid}')">Завершить</button>`}
+                        ${(!s.current && canEnd) ? `<button class="ge-dev-end" onclick="geEngine.devices.terminate('${s.sid}')">Завершить</button>` : ''}
                     </div>`;
                 },
                 render() {
@@ -7865,12 +7871,12 @@
                     let lock = '';
                     if (!d.canTerminate) {
                         const h = Math.max(1, Math.ceil((d.canTerminateAt - now) / 3600000));
-                        lock = `<div class="ge-dev-lock">🔒 Вы вошли на этом устройстве недавно. Завершать другие сеансы с него можно будет через ${h} ч — так новое устройство не может сразу выкинуть владельца аккаунта.</div>`;
+                        lock = `<div class="ge-dev-lock">🔒 Вы вошли на этом устройстве недавно. Завершать другие сеансы отсюда можно будет через ${h} ч — так новое устройство не сможет сразу выкинуть владельца аккаунта.</div>`;
                     }
                     body.innerHTML = `
                         <div class="ge-dev-section">Это устройство</div>
                         ${current ? this._item(current, now, false) : ''}
-                        ${others.length ? `<button class="ge-dev-danger" ${d.canTerminate ? '' : 'disabled'} onclick="geEngine.devices.terminateOthers()">Завершить все другие сеансы</button>` : ''}
+                        ${others.length && d.canTerminate ? `<button class="ge-dev-danger" onclick="geEngine.devices.terminateOthers()">Завершить все другие сеансы</button>` : ''}
                         ${lock}
                         <div class="ge-dev-section">Активные сеансы${others.length ? ` · ${others.length}` : ''}</div>
                         ${others.length ? others.map(s => this._item(s, now, d.canTerminate)).join('') : '<div class="ge-dev-meta" style="text-align:left;padding:4px 2px;">Других устройств нет — аккаунт открыт только здесь.</div>'}
@@ -7901,7 +7907,7 @@
                     state: 'Сеанс входа устарел или открыт в другой вкладке. Попробуйте ещё раз.',
                     exchange: 'Не удалось получить данные из Minva. Попробуйте ещё раз.',
                     not_configured: 'Вход через Minva сейчас недоступен.',
-                    email_exists: 'Аккаунт GeLink с почтой вашего Minva уже есть. Войдите в него паролем и привяжите Minva в настройках (⚙ → Minva).',
+                    email_exists: 'Аккаунт GeLink с почтой вашего Minva уже есть. Войдите в него паролем и привяжите Minva в ⚙ → Конфиденциальность → Вход через Minva.',
                     taken: 'Этот аккаунт Minva уже привязан к другому аккаунту GeLink.',
                     already_linked: 'К вашему аккаунту GeLink уже привязан другой аккаунт Minva.',
                 },
