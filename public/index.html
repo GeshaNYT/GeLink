@@ -2366,6 +2366,11 @@
                     <span class="ge-group-action-text"><b>Чёрный список</b><small id="ge-privacy-blocked-sub">Никого нет</small></span>
                     <span class="ge-group-action-chevron">›</span>
                 </button>
+                <button class="ge-group-action-btn ge-hidden" id="ge-minva-popup-item" onclick="geEngine.privacy.close(); geEngine.minva.openSettings()">
+                    <span class="ge-group-action-icon"><span class="ge-minva-mark" style="width:22px;height:22px;border-radius:6px;font-size:12px;"><span class="ge-minva-letter">M</span></span></span>
+                    <span class="ge-group-action-text"><b>Вход через Minva</b><small id="ge-privacy-minva-sub">Привязка аккаунта Minva</small></span>
+                    <span class="ge-group-action-chevron">›</span>
+                </button>
             </div>
             <button class="ge-group-cancel-btn" style="margin-top:16px;" onclick="geEngine.privacy.close()">Закрыть</button>
         </div>
@@ -2863,7 +2868,7 @@
         // ── Все запросы к серверу GeLink идут с токеном сеанса ─────────────
         // Сервер больше не верит параметру user_email: пользователь определяется только по
         // токену, а токен действует, пока жив сеанс. Если сеанс завершили с другого
-        // устройства (⚙ → Устройства) — сервер отвечает 401, и мы выходим из аккаунта.
+        // устройства (⚙ → Конфиденциальность → Устройства) — сервер отвечает 401, и мы выходим из аккаунта.
         const GE_PUBLIC_ACTIONS = new Set(['checkAvailable', 'registerStart', 'registerVerify', 'registerResend',
             'login', 'loginVerify', 'loginResend', 'resetStart', 'resetVerify', 'resetFinish', 'findUser',
             'minvaConfig', 'minvaStart', 'minvaFinish', 'oauthClientInfo', 'logout']);
@@ -7534,6 +7539,13 @@
                         const el = document.getElementById('ge-privacy-devices-sub');
                         if (el && d.status === 'ok') el.innerText = d.sessions.length > 1 ? `Активных сеансов: ${d.sessions.length}` : 'Только это устройство';
                     } catch {}
+                    if (geEngine.minva.enabled) {
+                        try {
+                            const st = await (await fetch('/api/index?action=minvaStatus')).json();
+                            const el = document.getElementById('ge-privacy-minva-sub');
+                            if (el && st.status === 'ok') el.innerText = st.linked ? 'Аккаунт Minva привязан' : 'Не привязан — нажмите, чтобы привязать';
+                        } catch {}
+                    }
                 },
                 close() { geEngine.ui._closeModal('ge-modal-privacy-settings'); },
                 async openBlacklist() {
@@ -7764,7 +7776,6 @@
                     } catch { alert('Ошибка соединения с сервером. Попробуйте снова.'); }
                 },
                 async openSettings() {
-                    document.getElementById('ge-settings-popup').style.display = 'none';
                     const jwt = localStorage.getItem('ge_jwt');
                     if (!jwt) return alert('Чтобы управлять привязкой Minva, выйдите и войдите в GeLink заново.');
                     let st;
@@ -7961,10 +7972,6 @@
         <button class="ge-popup-item" onclick="geEngine.profile.open()">
             <span class="ge-popup-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
             <span class="ge-popup-label">Профиль</span>
-        </button>
-        <button class="ge-popup-item ge-hidden" id="ge-minva-popup-item" onclick="geEngine.minva.openSettings()">
-            <span class="ge-popup-icon"><span class="ge-minva-mark" style="width:20px;height:20px;border-radius:6px;font-size:11px;"><span class="ge-minva-letter">M</span></span></span>
-            <span class="ge-popup-label" id="ge-minva-popup-label">Minva</span>
         </button>
         <button class="ge-popup-item" onclick="geEngine.ui.openDonate()">
             <span class="ge-popup-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></span>
