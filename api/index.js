@@ -1076,7 +1076,7 @@ export default async function handler(request, response) {
             await db('SREM', 'deleted_users', emailLower);
 
             const sid = await createSession(db, emailLower, request, 'register');
-            await botSend(db, env, emailLower, '👋 Добро пожаловать в GeLink! Это официальный чат GeLink. Сюда приходят:\n🔐 коды для входа и для смены пароля;\n✅ уведомления о каждом новом входе в аккаунт;\n🔑 сообщения о смене пароля;\n🔗 сообщения о привязке и отвязке Minva.\n\nНикому не сообщайте коды из этого чата. Где открыт ваш аккаунт — в ⚙ → Конфиденциальность → Устройства.');
+            await botSend(db, env, emailLower, '👋 Добро пожаловать в GeLink! Это официальный чат GeLink. Сюда приходят:\n🔐 коды для входа;\n✅ уведомления о каждом новом входе в аккаунт;\n🔑 сообщения о смене пароля;\n🔗 сообщения о привязке и отвязке Minva.\n\nНикому не сообщайте коды из этого чата. Где открыт ваш аккаунт — в ⚙ → Конфиденциальность → Устройства.');
             const profile = parseHash(await db('HGETALL', `profile:${emailLower}`));
             return response.status(200).json({
                 status: 'ok', userId, token: await signToken({ email: emailLower, sid }, env.jwt),
@@ -1182,11 +1182,13 @@ export default async function handler(request, response) {
             if (newPassword && await checkPassword(db, me.email, profile, String(newPassword)))
                 return response.status(400).json({ status: 'error', code: 'same_password', message: 'Новый пароль совпадает с текущим. Придумайте другой.' });
             const { id, code } = await createChallenge(db, 'password', me.email);
-            // Код — и в чат GeLink, и на почту (если она настоящая)
-            await botSend(db, env, me.email, `🔐 Код для смены пароля: ${code}\n\nНикому не сообщайте этот код. Если пароль меняете не вы — завершите чужие сеансы в ⚙ → Конфиденциальность → Устройства.`, { loginCode: true });
-            const hasMail = !me.email.endsWith('@users.minva');
-            if (hasMail) await sendCodeEmail(me.email, profile.name, code);
-            return response.status(200).json({ status: 'ok', challenge: id, app: true, email: hasMail ? maskEmail(me.email) : null });
+            // Код для смены пароля — только на почту. В чат GeLink — лишь у аккаунтов из Minva без почты.
+            if (me.email.endsWith('@users.minva')) {
+                await botSend(db, env, me.email, `🔐 Код для смены пароля: ${code}\n\nНикому не сообщайте этот код.`, { loginCode: true });
+                return response.status(200).json({ status: 'ok', challenge: id, app: true, email: null });
+            }
+            await sendCodeEmail(me.email, profile.name, code);
+            return response.status(200).json({ status: 'ok', challenge: id, app: false, email: maskEmail(me.email) });
         }
 
         // ══════════════════════════════════════════════════════
