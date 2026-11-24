@@ -905,7 +905,7 @@ export default async function handler(request, response) {
             const userId = profile.userId || await getUserId(db, data.email);
             const sid = await createSession(db, data.email, request, 'minva');
             const sess = parseHash(await db('HGETALL', `sess:${sid}`));
-            await botSend(db, env, data.email, `✅ Новый вход в аккаунт через Minva: ${sess.device}${sess.place ? ', ' + sess.place : ''}, ${fmtWhen(sess.created)}.\nЕсли это были не вы — завершите этот сеанс в ⚙ → Устройства.`);
+            await botSend(db, env, data.email, `✅ Новый вход в аккаунт через Minva: ${sess.device}${sess.place ? ', ' + sess.place : ''}, ${fmtWhen(sess.created)}.\nЕсли это были не вы — завершите этот сеанс в ⚙ → Конфиденциальность → Устройства.`);
             return response.status(200).json({
                 status: 'ok',
                 token: await signToken({ email: data.email, sid }, env.jwt),
@@ -1035,7 +1035,7 @@ export default async function handler(request, response) {
             await db('SREM', 'deleted_users', emailLower);
 
             const sid = await createSession(db, emailLower, request, 'register');
-            await botSend(db, env, emailLower, '👋 Добро пожаловать в GeLink! Это официальный чат GeLink: сюда приходят коды входа и уведомления о входе с новых устройств. Список устройств — в ⚙ → Устройства.');
+            await botSend(db, env, emailLower, '👋 Добро пожаловать в GeLink! Это официальный чат GeLink: сюда приходят коды входа и уведомления о входе с новых устройств. Список устройств — в ⚙ → Конфиденциальность → Устройства.');
             const profile = parseHash(await db('HGETALL', `profile:${emailLower}`));
             return response.status(200).json({
                 status: 'ok', userId, token: await signToken({ email: emailLower, sid }, env.jwt),
@@ -1100,7 +1100,7 @@ export default async function handler(request, response) {
             const userId = profile.userId || await getUserId(db, emailLower);
             const sid = await createSession(db, emailLower, request, 'password');
             const sess = parseHash(await db('HGETALL', `sess:${sid}`));
-            await botSend(db, env, emailLower, `✅ Новый вход в аккаунт: ${sess.device}${sess.place ? ', ' + sess.place : ''}, ${fmtWhen(sess.created)}.\nЕсли это были не вы — завершите этот сеанс в ⚙ → Устройства и смените пароль.`);
+            await botSend(db, env, emailLower, `✅ Новый вход в аккаунт: ${sess.device}${sess.place ? ', ' + sess.place : ''}, ${fmtWhen(sess.created)}.\nЕсли это были не вы — завершите этот сеанс в ⚙ → Конфиденциальность → Устройства и смените пароль.`);
             return response.status(200).json({
                 status: 'ok', token: await signToken({ email: emailLower, sid }, env.jwt),
                 user: publicUser(emailLower, userId, profile),
@@ -1370,7 +1370,7 @@ export default async function handler(request, response) {
             }
 
             if (fields.length > 0) await db('HSET', `profile:${emailLower}`, ...fields);
-            if (password) await botSend(db, env, emailLower, `🔑 Пароль от вашего аккаунта изменён (${(await authenticate()).session.device}). Если это были не вы — срочно восстановите пароль и завершите чужие сеансы в ⚙ → Устройства.`);
+            if (password) await botSend(db, env, emailLower, `🔑 Пароль от вашего аккаунта изменён (${(await authenticate()).session.device}). Если это были не вы — срочно восстановите пароль и завершите чужие сеансы в ⚙ → Конфиденциальность → Устройства.`);
             return response.status(200).json({ status: 'ok' });
         }
 
