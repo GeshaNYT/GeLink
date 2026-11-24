@@ -557,6 +557,38 @@ function maskEmail(email) {
     return `${u.slice(0, 2)}${'•'.repeat(Math.max(1, Math.min(6, u.length - 2)))}@${d}`;
 }
 
+// ── Чёрный список ──────────────────────────────────────────────
+// blocked:<email> — кого этот пользователь заблокировал
+async function isBlockedBy(db, owner, other) {
+    if (!owner || !other) return false;
+    return (await db('SISMEMBER', `blocked:${owner}`, other)) === 1;
+}
+
+// Собеседник в личной комнате private-<userIdA>-<userIdB> (id отсортированы и склеены через «-»)
+async function privatePeerEmail(db, room, myEmail) {
+    if (!room.startsWith('private-')) return null;
+    const myUid = await getUserId(db, myEmail);
+    const rest = room.slice('private-'.length);
+    if (!myUid || !rest.includes(myUid)) return null;
+    const otherUid = rest.replace(myUid, '').replace(/^-|-$/g, '');
+    return otherUid ? await db('GET', `id_email:${otherUid}`) : null;
+}
+
+// Профиль для чужих глаз: без пароля и служебных полей; кого владелец заблокировал —
+// тот не видит его аватарку, «о себе» и что он в сети
+async function publicProfile(db, email, viewer) {
+    const profile = parseHash(await db('HGETALL', `profile:${email}`));
+    for (const k of ['password', 'salt', 'e2eBackup', 'minvaSub', 'minvaOnly']) delete profile[k];
+    if (!profile.userId) profile.userId = await getUserId(db, email);
+    profile.online = (await db('EXISTS', `last_seen:${email}`)) === 1;
+    if (viewer && viewer !== email && await isBlockedBy(db, email, viewer)) {
+        delete profile.avImg;
+        delete profile.bio;
+        profile.online = false;
+    }
+    return profile;
+}
+
 // Всё, что фронт сохраняет после входа (как в старом ответе action=login)
 function publicUser(email, userId, profile) {
     return {
@@ -1117,6 +1149,10 @@ export default async function handler(request, response) {
         if (action === 'passwordCode' && request.method === 'POST') {
             const me = await authenticate();
             const profile = parseHash(await db('HGETALL', `profile:${me.email}`));
+            // Новый пароль совпадает с текущим — код не шлём, менять нечего
+            const { password: newPassword } = readBody(request);
+            if (newPassword && await checkPassword(db, me.email, profile, String(newPassword)))
+                return response.status(400).json({ status: 'error', code: 'same_password', message: 'Новый пароль совпадает с текущим. Придумайте другой.' });
             const { id, code } = await createChallenge(db, 'password', me.email);
             if (me.email.endsWith('@users.minva')) {
                 await botSend(db, env, me.email, `🔐 Код для смены пароля: ${code}\n\nНикому не сообщайте этот код.`, { loginCode: true });
@@ -1124,6 +1160,105 @@ export default async function handler(request, response) {
             }
             await sendCodeEmail(me.email, profile.name, code);
             return response.status(200).json({ status: 'ok', challenge: id, sentTo: 'email', email: maskEmail(me.email) });
+        }
+
+        // ══════════════════════════════════════════════════════
+        //  ЧЁРНЫЙ СПИСОК
+        // ══════════════════════════════════════════════════════
+        if (action === 'blockUser' && request.method === 'POST') {
+            const me = await authenticate();
+            const target = String(readBody(request).target || '').trim().toLowerCase();
+            if (!target || target === me.email || await db('SISMEMBER', 'all_users', target) !== 1)
+                return response.status(400).json({ status: 'error', message: 'Пользователь не найден' });
+            await db('SADD', `blocked:${me.email}`, target);
+            await db('HDEL', `contact_requests:${me.email}`, target); // его заявка в контакты больше не висит
+            return response.status(200).json({ status: 'ok' });
+        }
+
+        if (action === 'unblockUser' && request.method === 'POST') {
+            const me = await authenticate();
+            const target = String(readBody(request).target || '').trim().toLowerCase();
+            await db('SREM', `blocked:${me.email}`, target);
+            return response.status(200).json({ status: 'ok' });
+        }
+
+        if (action === 'blockedList') {
+            const me = await authenticate();
+            const emails = (await db('SMEMBERS', `blocked:${me.email}`)) ?? [];
+            const users = [];
+            for (const e of emails) {
+                const p = parseHash(await db('HGETALL', `profile:${e}`));
+                users.push({ email: e, name: p.name || e, nickname: p.nickname || '', avImg: p.avImg || null,
+                    avColor: p.avColor || 'var(--ge-accent-gradient)', deleted: !p.name && !p.nickname });
+            }
+            return response.status(200).json({ status: 'ok', users });
+        }
+
+        // ══════════════════════════════════════════════════════
+        //  GIF: поиск через GIPHY и избранные GIF
+        // ══════════════════════════════════════════════════════
+        // Ключ GIPHY хранится только на сервере (переменная GIPHY_API_KEY), браузер его не видит.
+        // Tenor с 30.06.2026 закрыт для сторонних приложений, поэтому GIPHY.
+        if (action === 'gifSearch') {
+            await authenticate();
+            const key = process.env.GIPHY_API_KEY;
+            if (!key) return response.status(503).json({ status: 'error', code: 'no_gif_key', message: 'Поиск GIF ещё не настроен' });
+            const q = (request.query.q ?? '').toString().trim().slice(0, 80);
+            const offset = Math.max(0, Math.min(4900, parseInt(request.query.offset, 10) || 0));
+            const url = new URL(`https://api.giphy.com/v1/gifs/${q ? 'search' : 'trending'}`);
+            url.searchParams.set('api_key', key);
+            url.searchParams.set('limit', '24');
+            url.searchParams.set('offset', String(offset));
+            url.searchParams.set('rating', 'pg-13');
+            if (q) { url.searchParams.set('q', q); url.searchParams.set('lang', /[а-яё]/i.test(q) ? 'ru' : 'en'); }
+            let data;
+            try {
+                const r = await fetch(url.toString());
+                data = await r.json();
+                if (!r.ok) throw new Error(data?.meta?.msg || r.status);
+            } catch (e) {
+                return response.status(502).json({ status: 'error', message: 'GIPHY не ответил, попробуйте ещё раз' });
+            }
+            const gifs = (data.data || []).map(g => {
+                const im = g.images || {};
+                const orig = im.original || {};
+                const small = im.fixed_width || {};
+                const big = (orig.mp4 && Number(orig.mp4_size || 0) < 2.5e6) ? orig : (im.fixed_height || small);
+                return {
+                    preview: small.mp4 || small.url || null,
+                    src: big.mp4 || big.url || null,
+                    w: Number(big.width) || Number(small.width) || 200,
+                    h: Number(big.height) || Number(small.height) || 200,
+                };
+            }).filter(g => g.preview && g.src);
+            const total = data.pagination?.total_count ?? 0;
+            return response.status(200).json({ status: 'ok', gifs, next: offset + 24 < Math.min(total, 4999) ? offset + 24 : null });
+        }
+
+        // Избранные GIF: хэш gif_favs:<email>, поле — id (хэш содержимого, считает браузер),
+        // значение — данные GIF, зашифрованные ключом самого пользователя (сервер их не видит).
+        const GIF_FAVS_MAX = 200;
+        if (action === 'gifFavList') {
+            const me = await authenticate();
+            const items = parseHash(await db('HGETALL', `gif_favs:${me.email}`));
+            return response.status(200).json({ status: 'ok', items: Object.entries(items).map(([id, enc]) => ({ id, enc })) });
+        }
+        if (action === 'gifFavAdd' && request.method === 'POST') {
+            const me = await authenticate();
+            const id = String(request.body?.id ?? '');
+            const enc = String(request.body?.enc ?? '');
+            if (!/^[a-f0-9]{16,64}$/.test(id) || !enc) return response.status(400).json({ status: 'error', message: 'Неверные данные' });
+            if (enc.length > 2_000_000) return response.status(413).json({ status: 'error', message: 'GIF слишком большой для избранного' });
+            const have = parseHash(await db('HGETALL', `gif_favs:${me.email}`));
+            if (!(id in have) && Object.keys(have).length >= GIF_FAVS_MAX)
+                return response.status(400).json({ status: 'error', message: `В избранном уже ${GIF_FAVS_MAX} GIF — удалите какие-нибудь` });
+            await db('HSET', `gif_favs:${me.email}`, id, enc);
+            return response.status(200).json({ status: 'ok' });
+        }
+        if (action === 'gifFavRemove' && request.method === 'POST') {
+            const me = await authenticate();
+            await db('HDEL', `gif_favs:${me.email}`, String(request.body?.id ?? ''));
+            return response.status(200).json({ status: 'ok' });
         }
 
         // ══════════════════════════════════════════════════════
@@ -1198,6 +1333,9 @@ export default async function handler(request, response) {
             // Смена пароля — только с кодом (action=passwordCode): иначе тот, кто завладел
             // открытым устройством, мог бы сменить пароль и забрать аккаунт.
             if (password) {
+                const current = parseHash(await db('HGETALL', `profile:${emailLower}`));
+                if (await checkPassword(db, emailLower, current, String(password)))
+                    return response.status(400).json({ status: 'error', code: 'same_password', message: 'Новый пароль совпадает с текущим. Придумайте другой.' });
                 const ch = await checkChallenge(db, pwChallenge, 'password', pwCode);
                 if (ch.email !== emailLower) throw Object.assign(new Error('Код устарел. Запросите новый.'), { status: 400 });
             }
@@ -1302,7 +1440,9 @@ export default async function handler(request, response) {
                 const minvaSub = await db('HGET', `profile:${emailLower}`, 'minvaSub');
                 if (minvaSub) await db('DEL', `minva_sub:${minvaSub}`);
             } catch {}
-            // Все сеансы и служебный чат GeLink этого аккаунта
+            // Все сеансы, чёрный список и служебный чат GeLink этого аккаунта
+            try { await db('DEL', `blocked:${emailLower}`); } catch {}
+            try { await db('DEL', `gif_favs:${emailLower}`); } catch {}
             try {
                 for (const sid of (await db('SMEMBERS', `user_sessions:${emailLower}`)) ?? []) await db('DEL', `sess:${sid}`);
                 await db('DEL', `user_sessions:${emailLower}`);
@@ -1367,6 +1507,8 @@ export default async function handler(request, response) {
             const { to } = body;
             if (!to) return response.status(400).json({ status: 'error' });
             body.from = await tryAuth(request, env.jwt); // нельзя подписаться чужим адресом
+            if (await isBlockedBy(db, String(to).toLowerCase(), body.from) || await isBlockedBy(db, body.from, String(to).toLowerCase()))
+                return response.status(200).json({ status: 'ok' }); // звонок просто не доходит
             await db('LPUSH', `signal:${to}`, JSON.stringify(body));
             await db('EXPIRE', `signal:${to}`, 60);
             return response.status(200).json({ status: 'ok' });
@@ -1397,17 +1539,11 @@ export default async function handler(request, response) {
             const emailByUserId = await db('GET', `id_email:${q}`);
             if (emailByUserId) q = emailByUserId;
 
+            const viewer = await tryAuth(request, env.jwt).catch(() => null);
             const byEmail = await db('SISMEMBER', 'all_users', q);
             if (byEmail === 1) {
-                const profile = parseHash(await db('HGETALL', `profile:${q}`));
-                delete profile.password;
-                delete profile.e2eBackup;
-                // userId нужен клиенту, чтобы строить id личной комнаты не по email, а по
-                // стабильному ID — бэкфилим на лету для аккаунтов, созданных раньше этого поля.
-                if (!profile.userId) profile.userId = await getUserId(db, q);
-                // online — есть ли свежий "пинг" присутствия (см. action=heartbeat)
-                profile.online = (await db('EXISTS', `last_seen:${q}`)) === 1;
-                return response.status(200).json({ status: 'found', email: q, profile });
+                // userId (для id личной комнаты) и online (есть ли свежий пинг) — внутри publicProfile
+                return response.status(200).json({ status: 'found', email: q, profile: await publicProfile(db, q, viewer) });
             }
 
             // Аккаунт мог быть удалён владельцем — отдаём явный признак "deleted",
@@ -1422,12 +1558,7 @@ export default async function handler(request, response) {
             if (!foundEmail)
                 return response.status(404).json({ status: 'error', message: 'User not found' });
 
-            const profile = parseHash(await db('HGETALL', `profile:${foundEmail}`));
-            delete profile.password;
-            delete profile.e2eBackup;
-            if (!profile.userId) profile.userId = await getUserId(db, foundEmail);
-            profile.online = (await db('EXISTS', `last_seen:${foundEmail}`)) === 1;
-            return response.status(200).json({ status: 'found', email: foundEmail, profile });
+            return response.status(200).json({ status: 'found', email: foundEmail, profile: await publicProfile(db, foundEmail, viewer) });
         }
 
         // Резервная копия приватного E2E-ключа — доступна ТОЛЬКО самому владельцу
@@ -1451,6 +1582,11 @@ export default async function handler(request, response) {
             const emailLower = (jwtEmail ?? '').trim().toLowerCase();
             if (!emailLower) return response.status(400).json({ status: 'error', message: 'Не указан email' });
 
+            if (await isBlockedBy(db, emailLower, target_email))
+                return response.status(400).json({ status: 'error', message: 'Этот пользователь в вашем чёрном списке. Сначала разблокируйте его.' });
+            // Нас заблокировали — делаем вид, что заявка отправлена, но никуда её не кладём
+            if (await isBlockedBy(db, target_email, emailLower))
+                return response.status(200).json({ status: 'pending' });
             if (await db('SISMEMBER', 'all_users', target_email) !== 1)
                 return response.status(404).json({ status: 'error', message: 'User not found' });
 
@@ -1845,6 +1981,11 @@ export default async function handler(request, response) {
                 if (!isMember) {
                     return response.status(403).json({ status: 'error', message: 'Нельзя писать пользователю, который не в контактах' });
                 }
+                const peer = await privatePeerEmail(db, room, emailLower);
+                if (peer && await isBlockedBy(db, emailLower, peer))
+                    return response.status(403).json({ status: 'error', code: 'you_blocked', message: 'Этот пользователь в вашем чёрном списке. Разблокируйте его, чтобы написать.' });
+                if (peer && await isBlockedBy(db, peer, emailLower))
+                    return response.status(403).json({ status: 'error', code: 'blocked_you', message: 'Сообщение не доставлено: пользователь ограничил получение сообщений от вас.' });
             }
 
             // Если это настоящая группа (не general, не приватный чат) — проверяем, что она
