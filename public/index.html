@@ -3959,6 +3959,11 @@
                     geEngine.ui.renderChatList(geEngine.state._lastAllRooms || []);
                 },
                 toggleSelectItem(id) {
+                    // Официальный чат GeLink нельзя удалить — его не выбираем
+                    if (typeof id === 'string' && isBotRoom(id)) {
+                        geEngine.ui.showToast('Официальный чат GeLink нельзя удалить', 'error');
+                        return;
+                    }
                     const set = geEngine.state.selectedIds;
                     if (set.has(id)) set.delete(id); else set.add(id);
                     geEngine.ui.renderSelectToolbar();
@@ -4045,7 +4050,7 @@
                         ? `Покинуть выбранные группы (${ids.length})?`
                         : `Удалить выбранные контакты (${ids.length})?`;
                     if (!confirm(msg)) return;
-                    ids.forEach(rid => geEngine.chat._removeRoomCore(rid));
+                    ids.filter(rid => !isBotRoom(rid)).forEach(rid => geEngine.chat._removeRoomCore(rid));
                     geEngine.ui.showToast('Готово', 'success');
                     geEngine.ui.toggleSelectMode();
                 },
@@ -4283,7 +4288,8 @@
                         const inSelectMode = geEngine.state.selectMode;
                         const isSelected = geEngine.state.selectedIds.has(rid);
                         const checkboxHtml = inSelectMode
-                            ? `<div class="ge-select-checkbox ${isSelected ? 'checked' : ''}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>`
+                            ? (isBot ? `<div class="ge-select-checkbox" style="opacity:.3;border-style:dashed;" title="Официальный чат нельзя выбрать"></div>`
+                                : `<div class="ge-select-checkbox ${isSelected ? 'checked' : ''}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>`)
                             : '';
                         const itemClickAttr = inSelectMode
                             ? `onclick="geEngine.ui.toggleSelectItem('${rid}')"`
@@ -5634,7 +5640,7 @@
                         if (composerRow) composerRow.style.display = 'none';
                         if (inviteBar) {
                             inviteBar.classList.remove('ge-hidden');
-                            inviteBar.innerText = 'Это служебный чат GeLink: сюда приходят коды входа и уведомления. Отвечать на них не нужно.';
+                            inviteBar.innerText = 'Официальный чат GeLink: коды для входа и смены пароля, уведомления о входах, смене пароля и Minva. Отвечать сюда не нужно.';
                             inviteBar.disabled = true;
                             inviteBar.style.opacity = '1';
                             inviteBar.classList.add('ge-bot-readonly-bar');
@@ -5883,6 +5889,7 @@
                 // event.stopPropagation(), чтобы им мог пользоваться и одиночный removeRoom(),
                 // и массовое удаление из режима выбора.
                 _removeRoomCore(rid) {
+                    if (isBotRoom(rid)) return; // официальный чат GeLink не удаляется
                     if (!geEngine.state._deletedAt) geEngine.state._deletedAt = {};
                     geEngine.state._deletedAt[rid] = Date.now();
                     if (!geEngine.state.deletedRooms.includes(rid)) geEngine.state.deletedRooms.push(rid);
